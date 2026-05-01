@@ -1,24 +1,55 @@
-/* Write your global styles here, in PostCSS syntax */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-.form-input {
-  @apply shadow appearance-none border rounded w-full bg-base-100 py-2 px-3 text-base-content text-sm mb-3 leading-tight focus:outline-none;
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-base-300 rounded-full; }
+
+/* Sidebar width */
+.drawer-side > nav { width: 240px; }
+
+/* ─── Datetime inputs ──────────────────────────────────────────────────────
+   O popup é nativo do browser, mas dá pra alinhar com o tema:
+   - color-scheme indica ao browser pra usar variante dark/light
+   - accent-color colore dia selecionado / hoje
+   - ::-webkit-* customiza ícone, texto, padding
+*/
+:root[data-theme="dark"]  { color-scheme: dark;  accent-color: hsl(var(--p)); }
+:root[data-theme="light"] { color-scheme: light; accent-color: hsl(var(--p)); }
+
+input[type="datetime-local"],
+input[type="date"],
+input[type="time"] {
+	@apply font-medium tracking-wide;
+	font-variant-numeric: tabular-nums;
 }
 
-.card-primary {
-  @apply grid grid-cols-1 divide-y p-2 max-w-screen-lg mx-4 border-base-content rounded-md text-sm text-base-content shadow
+input[type="datetime-local"]::-webkit-datetime-edit,
+input[type="date"]::-webkit-datetime-edit { @apply text-base-content; padding: 0; }
+input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+input[type="datetime-local"]::-webkit-datetime-edit-text { @apply text-base-content/40; padding: 0 2px; }
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+	cursor: pointer;
+	border-radius: 0.375rem;
+	padding: 4px;
+	opacity: 0.55;
+	transition: background-color 150ms ease, opacity 150ms ease;
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+	@apply bg-primary/10;
+	opacity: 1;
 }
 
-.card-pending {
-  @apply flex justify-between p-1 mb-4 max-w-screen-lg border border-dashed mx-4 border-base-content rounded-md text-sm text-base-content shadow
-}
-
-.card-input {
-  @apply shadow appearance-none border rounded w-64 py-1 px-3 bg-base-100 text-base-content text-sm leading-tight focus:outline-none;
-}
-
-.card-select {
-  @apply shadow border rounded w-64 py-1 px-3 bg-base-100 text-base-content text-sm leading-tight focus:outline-2;
+input[type="datetime-local"]:focus,
+input[type="date"]:focus,
+input[type="time"]:focus {
+	@apply ring-2 ring-primary/40 outline-none;
+	border-color: hsl(var(--p));
 }

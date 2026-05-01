@@ -71,7 +71,7 @@ jobs:
         if: ${{ env.NOT_PREVIOUSLY_PUBLISHED != 0 }}
         run: |
           cd "${{ steps.extract.outputs.destination }}"
-          7z a headscale-ui.zip web
+          7z a bigscale-panel.zip web
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -80,7 +80,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.VERSION }}
-          name: headscale-ui
-          files: ${{ steps.extract.outputs.destination }}/headscale-ui.zip
+          name: bigscale-panel
+          files: ${{ steps.extract.outputs.destination }}/bigscale-panel.zip
           generate_release_notes: true
           make_latest: true

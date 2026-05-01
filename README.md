@@ -1,128 +1,143 @@
-# Headscale-UI
-A web frontend for the [headscale](https://github.com/juanfont/headscale) Tailscale-compatible coordination server.
+# BigScale
 
-![](documentation/assets/headscale-ui-demo.gif)
+Servidor de coordenação VPN mesh (compatível com Tailscale) + painel de administração web.
 
-## Installation
-> [!WARNING]  
-> The latest major release of headscale ui change the default container ports from `80` and `443` to `8080` and `8443` respectively. If you are using the `HTTP_PORT` or `HTTPS_PORT` environment variables this does not affect you, otherwise you need to change your ports in your docker-compose or kubernetes manifests.
+BigScale é um coordenador VPN auto-hospedado, baseado no motor open-source [Headscale](https://github.com/juanfont/headscale), embalado como `bigscale` e acompanhado de um painel web moderno para gerenciar usuários, dispositivos e chaves de autenticação.
 
-Headscale-UI is currently released as a static site: just take the release and host with your favorite web server. Headscale-UI expects to be served from the `/web` path to avoid overlap with headscale on the same domain. Note that due to CORS (see https://github.com/juanfont/headscale/issues/623), headscale UI *must* be served on the same subdomain, or CORS headers injected via reverse proxy.
+Use junto com o cliente desktop **[BigLace](https://github.com/BigCommunity/biglace)** para conectar máquinas Linux à sua rede.
 
-### Docker Installation
-If you are using docker, you can install `headscale` alongside `headscale-ui`, like so:
+---
 
-```yaml
-version: '3.5'
-services:
-  headscale:
-    image: headscale/headscale:stable
-    container_name: headscale
-    volumes:
-      - ./container-config:/etc/headscale
-      - ./container-data/data:/var/lib/headscale
-    # ports:
-      # - 27896:8080
-    command: serve
-    restart: unless-stopped
-  headscale-ui:
-    image: ghcr.io/gurucomputing/headscale-ui:latest
-    restart: unless-stopped
-    container_name: headscale-ui
-    # ports:
-      # - 8443:8443
-      # - 8080:8080
+## Recursos
+
+- **Coordenador VPN** auto-hospedado — você controla seus dados, sem dependência da Tailscale Inc.
+- **Painel web** moderno (SvelteKit + DaisyUI), tema claro/escuro, responsivo.
+- **Idiomas**: Inglês, Português (Brasil), Espanhol.
+- **Login com usuário e senha** — primeiro acesso força troca da senha default.
+- **Gestão completa**: usuários, dispositivos, preauth keys, API keys.
+- **Zero-config**: 1 comando e o stack roda — chave de API e senha são geradas/trocadas pelo painel.
+
+---
+
+## Instalação rápida
+
+### Pré-requisitos
+- Docker + Docker Compose v2
+- (Em produção) domínio público com HTTPS via reverse proxy (Caddy, Nginx, Traefik…)
+
+### Passos
+
+```bash
+git clone https://github.com/talesam/bigscale.git
+cd bigscale
+docker compose up -d
 ```
 
-Headscale UI serves on port 8080/8443 and uses a self signed cert by default. You will need to add a `config.yaml` file under your `container-config` folder so that `headscale` has all of the required settings declared. An example from the official `headscale` repo is [here](https://github.com/juanfont/headscale/blob/main/config-example.yaml). 
+Pronto. Acesse o painel e faça login com **admin** / **bigscale** — o painel força você a trocar a senha imediatamente. A `BIGSCALE_API_KEY` é gerada automaticamente pelo serviço `bigscale-init` na primeira execução e ficou guardada num volume Docker.
 
-### Additional Docker Settings
-The docker container lets you set the following settings:
-| Variable | Description | Example |
-|----|----|----|
-| HTTP_PORT | Sets the HTTP port to an alternate value | `8080` |
-| HTTPS_PORT | Sets the HTTPS port to an alternate value | `8443` |
+Em desenvolvimento local, o painel sobe na **3000** e o servidor na **18080** (via `docker-compose.override.yml`). Em produção, configure seu reverse proxy:
 
-### Proxy Settings
-You will need a reverse proxy to install `headscale-ui` on your domain. Here is an example [Caddy Config](https://caddyserver.com/) to achieve this:
-```
-https://hs.yourdomain.com.au {
-	reverse_proxy /web* http://headscale-ui:8080
-	reverse_proxy * http://headscale:8080
+```caddyfile
+seu-dominio.com {
+    reverse_proxy bigscale-panel:3000
 }
-
-
 ```
 
-### Cross Domain Installation
-If you do not want to configure headscale-ui on the same subdomain as headscale, you must intercept headscale traffic via your reverse proxy to fix CORS (see https://github.com/juanfont/headscale/issues/623). Here is an example fix with Caddy, replacing your headscale UI domain with `hs-ui.yourdomain.com.au`:
-```
-https://hs.yourdomain.com.au {
-	@hs-options {
-		host hs.yourdomain.com.au
-		method OPTIONS
-	}
-	@hs-other {
-		host hs.yourdomain.com.au
-	}
-	handle @hs-options {
-		header {
-			Access-Control-Allow-Origin https://hs-ui.yourdomain.au
-			Access-Control-Allow-Headers *
-			Access-Control-Allow-Methods "POST, GET, OPTIONS, DELETE"
-		}
-		respond 204
-	}
-	handle @hs-other {
-		reverse_proxy http://headscale:8080 {
-			header_down Access-Control-Allow-Origin https://hs-ui.yourdomain.com.au
-			header_down Access-Control-Allow-Methods "POST, GET, OPTIONS, DELETE"
-			header_down Access-Control-Allow-Headers *
-		}
-	}
-}
+O endpoint público do **servidor** (porta `8080` interna) deve apontar pro `bigscale-server:8080` para que os clientes Tailscale/BigLace consigam conectar — geralmente em um subdomínio separado, ex: `vpn.seu-dominio.com → bigscale-server:8080`.
+
+---
+
+## Variáveis de ambiente (todas opcionais)
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `ADMIN_USERNAME` | Usuário inicial do painel | `admin` |
+| `ADMIN_PASSWORD` | Senha inicial do painel | `bigscale` |
+
+`ADMIN_USERNAME` / `ADMIN_PASSWORD` são apenas seeds — uma vez que o admin troca a senha pelo painel, o valor armazenado no volume `bigscale-panel-data` é o que vale.
+
+A chave da API do servidor (`BIGSCALE_API_KEY_FILE`) é gerada automaticamente. A `BIGSCALE_SERVER_URL` é fixada internamente em `http://bigscale-server:8080` via `docker-compose.yml`.
+
+---
+
+## Uso
+
+1. Acesse o painel pelo seu domínio.
+2. Login: `admin` / `bigscale` (você será forçado a trocar imediatamente).
+3. Em **Usuários**, crie um usuário e gere uma **chave de autenticação (preauth key)**.
+4. Compartilhe a URL pública do servidor + a authkey com o usuário final.
+5. O usuário cola URL + authkey no app **BigLace** (ou roda `tailscale up --login-server=<URL> --authkey=<KEY>`).
+
+---
+
+## Arquitetura
 
 ```
+┌─────────────────────────────────────────┐
+│  Cliente (BigLace ou tailscale CLI)     │
+└─────────────────┬───────────────────────┘
+                  │ WireGuard via protocolo Headscale
+                  ▼
+┌─────────────────────────────────────────┐
+│        bigscale-server (motor VPN)      │  ← coordenação P2P
+└─────────────────────────────────────────┘
+                  ▲
+                  │ HTTP API (interno)
+┌─────────────────┴───────────────────────┐
+│   bigscale-panel (SvelteKit + Node)     │  ← admin web
+│  • Sessão server-side (cookie httpOnly) │
+│  • Senha do admin em /data/admin.json   │
+│  • Proxy /api/bs/v1 → bigscale-server   │
+└─────────────────────────────────────────┘
 
-### Other Configurations
-See [Other Configurations](/documentation/configuration.md) for further proxy examples, such as Traefik
+bigscale-init (one-shot, encerra após rodar):
+  espera o server, executa `bigscale apikeys create`
+  e escreve a chave em volume compartilhado.
+```
 
-## Versioning
-The following versions correspond to the appropriate headscale version
-| Headscale Version | HS-UI Version |
-|-------------------|---------------|
-| 28+               | 2026-03-17+   |
-| 26+               | 2025-05-22+   |
-| 25+               | 2025-03-14+   |
-| 24+               | 2025-01-20+   |
-| 23+               | 2024-10-01+   |
-| 19+               | 2023-01-30+   |
-| <19               | <2023-01-30   |
+A chave da API do servidor **nunca** é enviada ao navegador. Todas as chamadas do painel passam pelo proxy `/api/bs/v1/*`, que valida a sessão e adiciona o header `Authorization` server-side. A chave fica em volume Docker `bigscale-shared`, montado read-only pelo painel.
 
-## Troubleshooting
-Make sure you are using the latest version of headscale. Headscale-UI is only tested against:
+---
 
-* The current stable version of headscale
-* Chrome/Chrome Mobile
-* Firefox/Firefox Mobile
+## Build da imagem
 
-Note that while mobile is checked for functionality, the web experience is not mobile optimised.
+A imagem do painel é gerada via `docker compose build`. Para incluir metadados de versão (commit, data) nos LABELs OCI das imagens, use o script:
 
-If you are getting errors about preflight checks, it's probably CORS related. Make sure your UI sits on the same subdomain as headscale or inject CORS headers.
+```bash
+./scripts/build.sh
+```
 
-### Errors related to "Missing Bearer Prefix"
-Your API key is either not saved or you haven't configured your reverse proxy. Create an API key in `headscale` (via command line) with `headscale apikeys create` or `docker exec <headscale container> headscale apikeys create` and save it in `settings`.
+O script lê a versão de `package.json`, a data atual, e o hash curto do commit, e os injeta como `BIGSCALE_VERSION`, `BUILD_DATE` e `VCS_REF` no build de **ambas** as imagens (`bigscale/server:VERSION` e `bigscale/panel:VERSION`). Inspecione com:
 
-HS-UI *has* to be ran on the same subdomain as headscale or you need to configure CORS. Yes you need to use a reverse proxy to do this. Use a reverse proxy. If you are trying to use raw IPs and ports, it *will* not work.
+```bash
+docker inspect bigscale/panel:latest --format '{{json .Config.Labels}}' | jq
+docker inspect bigscale/server:latest --format '{{json .Config.Labels}}' | jq
+```
 
-## Security
-see [security](/SECURITY.md) for details
+Essas variáveis **não vão para o `.env`** — são exclusivas do build e ficam embutidas nas imagens.
 
-## Development
-see [development](/documentation/development.md) for details
+---
 
-## Style Guide
-see [style](/documentation/style.md) for details
+## Desenvolvimento
 
-## Architecture
-See [architecture](/documentation/architecture.md) for details
+```bash
+npm install
+npm run dev   # painel em http://localhost:8080
+```
+
+Para dev local, suba só o servidor (que ficará na 18080 via `docker-compose.override.yml`) e exporte:
+
+```bash
+docker compose up -d bigscale-server bigscale-init
+export BIGSCALE_SERVER_URL=http://localhost:18080
+# A chave foi gerada pelo bigscale-init e está no volume bigscale-shared.
+# Para usar em dev local fora do docker, copie:
+docker run --rm -v bigscale_bigscale-shared:/s alpine cat /s/api-key
+export BIGSCALE_API_KEY=<chave-copiada>
+```
+
+---
+
+## Licença
+
+MIT

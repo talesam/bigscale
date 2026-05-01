@@ -1,0 +1,10 @@
+# Override usado em desenvolvimento/teste local.
+# Em produção, suba só com `docker-compose.yml` (sem este arquivo).
+services:
+  bigscale-server:
+    ports:
+      - "18080:8080"   # Servidor BigScale na 18080 do host (8080 fica livre pro dev do painel)
+
+  bigscale-panel:
+    ports:
+      - "3000:3000"    # painel acessível em http://localhost:3000

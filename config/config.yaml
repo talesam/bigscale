@@ -1,0 +1,50 @@
+# BigScale Server Configuration
+# Rename this file to config.yaml and edit as needed
+
+# URL pública do servidor (deve bater com PUBLIC_URL no docker-compose)
+server_url: https://biglace.biglinux.com.br
+
+listen_addr: 0.0.0.0:8080
+grpc_listen_addr: 0.0.0.0:50443
+
+# Unix socket — usado pelo CLI (bigscale apikeys, etc) e pelo bigscale-init
+unix_socket: /var/run/bigscale/bigscale.sock
+unix_socket_permission: "0770"
+
+# Chaves criptográficas (geradas automaticamente no primeiro start)
+private_key_path: /var/lib/bigscale/private.key
+noise:
+  private_key_path: /var/lib/bigscale/noise_private.key
+
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/bigscale/db.sqlite
+
+log:
+  level: info
+
+dns:
+  magic_dns: true
+  base_domain: bigscale.net
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 8.8.8.8
+
+derp:
+  server:
+    enabled: true
+    region_id: 999
+    region_code: "bigscale"
+    region_name: "BigScale Embedded DERP"
+    stun_listen_addr: "0.0.0.0:3478"
+    private_key_path: /var/lib/bigscale/derp_server_private.key
+  urls: []
+  paths: []
+  auto_update_enabled: false
+  update_frequency: 24h
+
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
