@@ -128,6 +128,7 @@ export const ptBR: Record<string, string> = {
 	'users.toast.created':          'Usuário criado.',
 	'users.toast.renamed':          'Usuário renomeado.',
 	'users.toast.removed':          'Usuário removido.',
+	'users.toast.notEmpty':         'Não é possível remover: o usuário ainda possui dispositivos. Remova-os primeiro em Dispositivos.',
 	'users.toast.keyExpired':       'Chave expirada.',
 	'users.toast.loadError':        'Erro ao carregar usuários',
 	'users.toast.keysLoadError':    'Erro ao carregar chaves',
