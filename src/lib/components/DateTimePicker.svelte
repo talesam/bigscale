@@ -7,7 +7,31 @@
 	export let placeholder: string = '';
 
 	let wrapper: HTMLDivElement;
+	let anchor: HTMLButtonElement;
 	let open = false;
+	let popLeft = 0;
+	let popTop = 0;
+	let popWidth = 320;
+	const POP_HEIGHT = 360; // estimativa do dropdown (header + grid 6 linhas + time/actions)
+
+	function updatePosition() {
+		if (!anchor) return;
+		const r = anchor.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const margin = 8;
+		// largura: usa a do botão se for grande o bastante, senão 320 limitado à viewport
+		popWidth = Math.min(Math.max(r.width, 320), vw - margin * 2);
+		// horizontal: alinhar com o botão, mas grudar na borda se for cair fora
+		let left = r.left;
+		if (left + popWidth + margin > vw) left = Math.max(margin, vw - popWidth - margin);
+		if (left < margin) left = margin;
+		popLeft = left;
+		// vertical: abaixo do botão; se não couber, abrir para cima
+		const below = r.bottom + 8;
+		const above = r.top - 8 - POP_HEIGHT;
+		popTop = below + POP_HEIGHT <= vh - margin ? below : Math.max(margin, above);
+	}
 
 	// Data atualmente selecionada
 	$: selectedDate = value ? parseLocal(value) : null;
@@ -123,27 +147,58 @@
 		value = '';
 	}
 
+	let popover: HTMLDivElement | null = null;
+
+	// Move o popover para <body> para escapar do containing block criado por
+	// transform/filter/will-change em ancestrais (ex: DaisyUI modal-box).
+	// Sem isso, `position: fixed` é resolvido contra o ancestral transformado
+	// e a barra de rolagem do modal "captura" o popover.
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				if (node.parentNode === document.body) {
+					document.body.removeChild(node);
+				}
+			}
+		};
+	}
+
 	function toggle() {
 		open = !open;
-		if (open && selectedDate) {
-			viewYear = selectedDate.getFullYear();
-			viewMonth = selectedDate.getMonth();
+		if (open) {
+			if (selectedDate) {
+				viewYear = selectedDate.getFullYear();
+				viewMonth = selectedDate.getMonth();
+			}
+			// recalcula assim que renderiza no DOM
+			queueMicrotask(updatePosition);
 		}
 	}
 
 	function onDocClick(e: MouseEvent) {
-		if (wrapper && !wrapper.contains(e.target as Node)) open = false;
+		const t = e.target as Node;
+		const inWrapper = wrapper && wrapper.contains(t);
+		const inPopover = popover && popover.contains(t);
+		if (!inWrapper && !inPopover) open = false;
 	}
 	function onKey(e: KeyboardEvent) {
 		if (e.key === 'Escape') open = false;
+	}
+	function onWinChange() {
+		if (open) updatePosition();
 	}
 
 	onMount(() => {
 		document.addEventListener('mousedown', onDocClick);
 		document.addEventListener('keydown', onKey);
+		window.addEventListener('resize', onWinChange);
+		window.addEventListener('scroll', onWinChange, true);
 		return () => {
 			document.removeEventListener('mousedown', onDocClick);
 			document.removeEventListener('keydown', onKey);
+			window.removeEventListener('resize', onWinChange);
+			window.removeEventListener('scroll', onWinChange, true);
 		};
 	});
 </script>
@@ -151,6 +206,7 @@
 <div class="dtpicker relative" bind:this={wrapper}>
 	<button
 		type="button"
+		bind:this={anchor}
 		class="input input-bordered w-full flex items-center justify-between gap-2 cursor-pointer hover:border-primary/50 transition-colors"
 		class:input-primary={open}
 		on:click={toggle}
@@ -164,7 +220,12 @@
 	</button>
 
 	{#if open}
-		<div class="absolute z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-base-100 border border-base-300 shadow-2xl overflow-hidden">
+		<div
+			use:portal
+			bind:this={popover}
+			class="fixed z-[9999] rounded-2xl bg-base-100 border border-base-300 shadow-2xl overflow-hidden"
+			style="left: {popLeft}px; top: {popTop}px; width: {popWidth}px;"
+		>
 			<!-- Header -->
 			<div class="flex items-center justify-between gap-2 px-3 py-2.5 bg-base-200/50 border-b border-base-300">
 				<button type="button" class="btn btn-ghost btn-xs btn-square" on:click={prevMonth} aria-label="prev">
