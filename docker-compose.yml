@@ -13,9 +13,13 @@ services:
     container_name: bigscale
     restart: unless-stopped
     environment:
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-bigscale}
-      COOKIE_SECURE:  ${COOKIE_SECURE:-false}
+      ADMIN_USERNAME:      ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD:      ${ADMIN_PASSWORD:-bigscale}
+      COOKIE_SECURE:       ${COOKIE_SECURE:-false}
+      # Public URL clients reach the coordinator through (must match
+      # server_url in /etc/headscale/config.yaml). Without this, /api/v1/preauth-key
+      # falls back to http://localhost:8080 and tailscale clients can't reach it.
+      BIGSCALE_PUBLIC_URL: ${BIGSCALE_PUBLIC_URL:-}
     volumes:
       - ./config:/etc/bigscale
       - bigscale-data:/var/lib/bigscale

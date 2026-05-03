@@ -19,6 +19,37 @@ interface PreAuthKeyResp {
 	preAuthKey?: { key?: string };
 }
 
+interface PreAuthKey {
+	id?:         string | number;
+	key?:        string;
+	user?:       { id?: string | number };
+	used?:       boolean;
+	expiration?: string;
+}
+
+interface PreAuthKeysResp {
+	preAuthKeys?: PreAuthKey[];
+}
+
+async function findReusableKey(userId: string): Promise<string | null> {
+	// Each click on "Entrar" used to mint a brand new key, polluting the
+	// server with dozens of unused keys per user. Reuse one that's still
+	// good (belongs to this user, hasn't been redeemed, hasn't expired).
+	const listRes = await bs('GET', 'preauthkey', undefined, { user: userId });
+	if (!listRes.ok) return null;
+	const list = (await listRes.json()) as PreAuthKeysResp;
+	const now = Date.now();
+	const candidate = list.preAuthKeys?.find(
+		(k) =>
+			String(k.user?.id) === userId &&
+			k.used !== true &&
+			!!k.expiration &&
+			Date.parse(k.expiration) > now &&
+			!!k.key
+	);
+	return candidate?.key ?? null;
+}
+
 function sanitizeName(raw: string): string {
 	const trimmed = raw.trim().toLowerCase();
 	const cleaned = trimmed.replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
@@ -85,7 +116,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: (e as Error).message }, { status: 502 });
 	}
 
-	const expiration = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1h
+	// Reuse an existing valid key for this user before minting a new one.
+	const reusable = await findReusableKey(userId);
+	if (reusable) {
+		return json({ authkey: reusable, server_url: BIGSCALE_PUBLIC_URL });
+	}
+
+	// 24h gives the user enough headroom to actually click Connect after the
+	// dialog closes (the old 1h was easy to miss).
+	const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 	const res = await bs('POST', 'preauthkey', {
 		user:       userId,
 		reusable:   false,
