@@ -16,7 +16,8 @@ export async function bs(
 	if (query) {
 		for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
 	}
-	return fetch(url.toString(), {
+	const t0 = Date.now();
+	const res = await fetch(url.toString(), {
 		method,
 		headers: {
 			Authorization: `Bearer ${BIGSCALE_API_KEY}`,
@@ -25,6 +26,8 @@ export async function bs(
 		},
 		body: body !== undefined ? JSON.stringify(body) : undefined
 	});
+	console.log(`[bs] ${method} ${path} → ${res.status} (${Date.now() - t0}ms)`);
+	return res;
 }
 
 export async function bsJson<T = unknown>(
