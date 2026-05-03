@@ -128,6 +128,7 @@ export const en: Record<string, string> = {
 	'users.toast.created':          'User created.',
 	'users.toast.renamed':          'User renamed.',
 	'users.toast.removed':          'User removed.',
+	'users.toast.notEmpty':         'Cannot remove: this user still has devices. Delete them first in Devices.',
 	'users.toast.keyExpired':       'Key expired.',
 	'users.toast.loadError':        'Error loading users',
 	'users.toast.keysLoadError':    'Error loading keys',

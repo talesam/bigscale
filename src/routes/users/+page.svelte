@@ -114,7 +114,11 @@
 			deleteTarget = null;
 			await load();
 		} catch (e: unknown) {
-			addToast(e instanceof Error ? e.message : $t('common.error'), 'error');
+			const raw = e instanceof Error ? e.message : '';
+			// Headscale rejects user deletion while devices still belong to it.
+			// Surface a friendly hint instead of the raw "user not empty: node(s) found".
+			const hasDevices = /user not empty|node\(s\) found/i.test(raw);
+			addToast(hasDevices ? $t('users.toast.notEmpty') : (raw || $t('common.error')), 'error');
 		} finally {
 			deleteLoading = false;
 		}
