@@ -31,6 +31,12 @@ interface PreAuthKeysResp {
 	preAuthKeys?: PreAuthKey[];
 }
 
+// Headscale preauth keys are 48-byte hex strings (96 chars). Anything much
+// shorter coming back from `GET preauthkey` means the list endpoint returned
+// only a truncated identifier rather than the full secret — happens on some
+// headscale versions for security. Don't try to reuse those.
+const MIN_REUSABLE_KEY_LEN = 48;
+
 async function findReusableKey(userId: string): Promise<string | null> {
 	// Each click on "Entrar" used to mint a brand new key, polluting the
 	// server with dozens of unused keys per user. Reuse one that's still
@@ -45,9 +51,21 @@ async function findReusableKey(userId: string): Promise<string | null> {
 			k.used !== true &&
 			!!k.expiration &&
 			Date.parse(k.expiration) > now &&
-			!!k.key
+			typeof k.key === 'string' &&
+			k.key.length >= MIN_REUSABLE_KEY_LEN
 	);
-	return candidate?.key ?? null;
+	if (candidate?.key) {
+		console.log(`[preauth-key] reusing key (len=${candidate.key.length})`);
+		return candidate.key;
+	}
+	const total = list.preAuthKeys?.length ?? 0;
+	const truncated = list.preAuthKeys?.filter(
+		(k) => typeof k.key === 'string' && k.key.length < MIN_REUSABLE_KEY_LEN
+	).length ?? 0;
+	console.log(
+		`[preauth-key] no reusable key (total=${total}, truncated=${truncated})`
+	);
+	return null;
 }
 
 function sanitizeName(raw: string): string {
@@ -89,6 +107,10 @@ async function ensureUser(name: string): Promise<string> {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
+	const t0 = Date.now();
+	const stamp = (label: string, since: number) =>
+		console.log(`[preauth-key] ${label}: ${Date.now() - since}ms`);
+
 	let body: PreAuthBody;
 	try {
 		body = await request.json();
@@ -102,7 +124,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Usuário e senha são obrigatórios' }, { status: 400 });
 	}
 
+	const tAuth = Date.now();
 	const auth = verifyAdmin(username, password);
+	stamp('verifyAdmin', tAuth);
 	if (!auth.ok) {
 		return json({ error: 'Credenciais inválidas' }, { status: 401 });
 	}
@@ -111,26 +135,33 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	let userId: string;
 	try {
+		const tEnsure = Date.now();
 		userId = await ensureUser(nodeUser);
+		stamp('ensureUser', tEnsure);
 	} catch (e) {
 		return json({ error: (e as Error).message }, { status: 502 });
 	}
 
 	// Reuse an existing valid key for this user before minting a new one.
+	const tFind = Date.now();
 	const reusable = await findReusableKey(userId);
+	stamp('findReusableKey', tFind);
 	if (reusable) {
+		stamp('TOTAL (reused)', t0);
 		return json({ authkey: reusable, server_url: BIGSCALE_PUBLIC_URL });
 	}
 
 	// 24h gives the user enough headroom to actually click Connect after the
 	// dialog closes (the old 1h was easy to miss).
 	const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+	const tCreate = Date.now();
 	const res = await bs('POST', 'preauthkey', {
 		user:       userId,
 		reusable:   false,
 		ephemeral:  false,
 		expiration
 	});
+	stamp('createPreAuthKey', tCreate);
 
 	if (!res.ok) {
 		const text = await res.text();
@@ -146,6 +177,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Resposta inesperada do servidor BigScale' }, { status: 502 });
 	}
 
+	console.log(`[preauth-key] minted new key (len=${key.length})`);
+	stamp('TOTAL (new)', t0);
 	return json({
 		authkey:    key,
 		server_url: BIGSCALE_PUBLIC_URL
