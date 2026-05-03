@@ -1,4 +1,4 @@
-import type { ApiKey, Device, PreAuthKey, User } from './types';
+import type { ApiKey, Device, Policy, PreAuthKey, Route, User } from './types';
 
 // All calls go through our backend proxy — API key never leaves the server
 const BASE = '/api/bs/v1';
@@ -89,6 +89,40 @@ export async function moveDevice(id: string, userId: string): Promise<Device> {
 	return d.node;
 }
 
+export async function expireDevice(id: string): Promise<Device> {
+	const d = await req<{ node: Device }>('POST', `node/${id}/expire`);
+	return d.node;
+}
+
+export async function setDeviceTags(id: string, tags: string[]): Promise<Device> {
+	const d = await req<{ node: Device }>('POST', `node/${id}/tags`, { tags });
+	return d.node;
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
+export async function getRoutes(): Promise<Route[]> {
+	const d = await req<{ routes: Route[] }>('GET', 'routes');
+	return d.routes ?? [];
+}
+
+export async function getNodeRoutes(nodeId: string): Promise<Route[]> {
+	const d = await req<{ routes: Route[] }>('GET', `node/${nodeId}/routes`);
+	return d.routes ?? [];
+}
+
+export async function enableRoute(routeId: string): Promise<void> {
+	await req('POST', `routes/${routeId}/enable`);
+}
+
+export async function disableRoute(routeId: string): Promise<void> {
+	await req('POST', `routes/${routeId}/disable`);
+}
+
+export async function deleteRoute(routeId: string): Promise<void> {
+	await req('DELETE', `routes/${routeId}`);
+}
+
 // ─── PreAuth Keys ─────────────────────────────────────────────────────────────
 
 export async function getPreAuthKeys(userId: string): Promise<PreAuthKey[]> {
@@ -122,4 +156,39 @@ export async function expireApiKey(prefix: string): Promise<void> {
 	// a API de expire não aceita o sufixo, precisa do prefix puro.
 	const cleanPrefix = prefix.replace(/-\*+$/, '');
 	await req('POST', 'apikey/expire', { prefix: cleanPrefix });
+}
+
+export async function deleteApiKey(prefix: string): Promise<void> {
+	const cleanPrefix = prefix.replace(/-\*+$/, '');
+	await req('DELETE', `apikey/${cleanPrefix}`);
+}
+
+// ─── Policy / ACL ─────────────────────────────────────────────────────────────
+
+export async function getPolicy(): Promise<Policy> {
+	// Policy ainda não existe → backend retorna erro "acl policy not found".
+	// Tratamos como policy vazia em vez de propagar erro.
+	try {
+		return await req<Policy>('GET', 'policy');
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : '';
+		if (/not found/i.test(msg)) return { policy: '' };
+		throw e;
+	}
+}
+
+export async function setPolicy(policy: string): Promise<Policy> {
+	return req<Policy>('PUT', 'policy', { policy });
+}
+
+// ─── System ───────────────────────────────────────────────────────────────────
+
+export async function getHealth(): Promise<{ ok: boolean; version?: string }> {
+	try {
+		const res = await fetch('/api/bs/health', { credentials: 'include' });
+		if (!res.ok) return { ok: false };
+		return res.json();
+	} catch {
+		return { ok: false };
+	}
 }

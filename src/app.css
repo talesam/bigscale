@@ -53,3 +53,45 @@ input[type="time"]:focus {
 	@apply ring-2 ring-primary/40 outline-none;
 	border-color: hsl(var(--p));
 }
+
+/* ─── Input com glow neon azul (usado no login) ───────────────────────────
+   Wrapper que captura focus-within de qualquer filho e renderiza borda
+   + sombra neon. O input/botão internos são transparentes pra formarem
+   um bloco único. */
+:root {
+	--neon-blue: 199 89% 60%;        /* cyan-azul vibrante */
+	--neon-blue-soft: 199 89% 70%;
+}
+.input-neon {
+	@apply relative flex items-center gap-2 rounded-lg border bg-base-100 px-3 transition-all duration-200;
+	min-height: 3rem;
+	border-color: hsl(var(--bc) / 0.18);
+}
+.input-neon:hover { border-color: hsl(var(--bc) / 0.35); }
+.input-neon:focus-within {
+	border-color: hsl(var(--neon-blue));
+	box-shadow:
+		0 0 0 2px hsl(var(--neon-blue) / 0.35),
+		0 0 12px hsl(var(--neon-blue) / 0.55),
+		0 0 28px hsl(var(--neon-blue) / 0.35);
+}
+.input-neon > svg { transition: color 200ms ease; }
+.input-neon:focus-within > svg.input-neon-icon {
+	color: hsl(var(--neon-blue));
+}
+.input-neon > input {
+	@apply flex-1 bg-transparent border-0 outline-none focus:outline-none focus:ring-0 text-base-content placeholder:text-base-content/40 py-2 text-sm;
+}
+.input-neon > input:-webkit-autofill {
+	-webkit-text-fill-color: hsl(var(--bc));
+	-webkit-box-shadow: 0 0 0 100px hsl(var(--b1)) inset;
+	caret-color: hsl(var(--bc));
+	transition: background-color 5000s ease-in-out 0s;
+}
+.input-neon > .input-neon-btn {
+	@apply flex items-center justify-center w-8 h-8 rounded-md text-base-content/50 transition-colors flex-shrink-0;
+}
+.input-neon > .input-neon-btn:hover {
+	color: hsl(var(--neon-blue));
+	background-color: hsl(var(--neon-blue) / 0.1);
+}

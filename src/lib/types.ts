@@ -36,3 +36,20 @@ export interface ApiKey {
 	createdAt: string;
 	lastSeen: string;
 }
+
+export interface Route {
+	id: string;
+	node: Device;
+	prefix: string;
+	advertised: boolean;
+	enabled: boolean;
+	isPrimary: boolean;
+	createdAt?: string;
+	updatedAt?: string;
+	deletedAt?: string;
+}
+
+export interface Policy {
+	policy: string;
+	updatedAt?: string;
+}

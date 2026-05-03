@@ -25,16 +25,36 @@ function sanitizeName(raw: string): string {
 	return cleaned || 'user';
 }
 
-async function ensureUser(name: string): Promise<void> {
-	// Tenta criar; ignora "already exists".
-	const res = await bs('POST', 'user', { name });
-	if (res.ok) return;
-	if (res.status === 409 || res.status === 400) {
-		// já existe — segue
-		return;
+async function ensureUser(name: string): Promise<string> {
+	// Cria; se já existe, segue. Em qualquer caso, retorna o ID do user.
+	const createRes = await bs('POST', 'user', { name });
+	if (createRes.ok) {
+		const created = (await createRes.json()) as UserResp;
+		const id = created.user?.id;
+		if (id !== undefined) return String(id);
+	} else {
+		const text = await createRes.text();
+		// O backend retorna 500 com "UNIQUE constraint failed" quando usuário já existe
+		const alreadyExists =
+			createRes.status === 409 ||
+			createRes.status === 400 ||
+			/already exists|UNIQUE constraint/i.test(text);
+		if (!alreadyExists) {
+			throw new Error(`Falha ao garantir usuário no servidor (HTTP ${createRes.status}): ${text}`);
+		}
 	}
-	const text = await res.text();
-	throw new Error(`Falha ao garantir usuário no servidor (HTTP ${res.status}): ${text}`);
+
+	// Buscar ID via list (filtrando por name)
+	const listRes = await bs('GET', 'user', undefined, { name });
+	if (!listRes.ok) {
+		throw new Error(`Falha ao buscar usuário (HTTP ${listRes.status})`);
+	}
+	const list = (await listRes.json()) as { users?: { id?: string | number; name?: string }[] };
+	const found = list.users?.find((u) => u.name === name);
+	if (found?.id === undefined) {
+		throw new Error(`Usuário ${name} não encontrado após criação`);
+	}
+	return String(found.id);
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -58,15 +78,16 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const nodeUser = sanitizeName(body.node_user || username);
 
+	let userId: string;
 	try {
-		await ensureUser(nodeUser);
+		userId = await ensureUser(nodeUser);
 	} catch (e) {
 		return json({ error: (e as Error).message }, { status: 502 });
 	}
 
 	const expiration = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1h
 	const res = await bs('POST', 'preauthkey', {
-		user:       nodeUser,
+		user:       userId,
 		reusable:   false,
 		ephemeral:  false,
 		expiration

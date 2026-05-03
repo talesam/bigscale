@@ -1,31 +1,49 @@
-# BigScale
+<p align="center">
+  <img src="static/icon.svg" width="120" alt="BigScale logo" />
+</p>
 
-Servidor de coordenação VPN mesh (compatível com Tailscale) + painel de administração web.
+<h1 align="center">BigScale</h1>
 
-BigScale é um coordenador VPN auto-hospedado, baseado no motor open-source [Headscale](https://github.com/juanfont/headscale), embalado como `bigscale` e acompanhado de um painel web moderno para gerenciar usuários, dispositivos e chaves de autenticação.
+<p align="center">
+  Self-hosted mesh VPN coordinator (Tailscale-compatible) with a modern admin web panel.
+</p>
 
-Use junto com o cliente desktop **[BigLace](https://github.com/BigCommunity/biglace)** para conectar máquinas Linux à sua rede.
+<p align="center">
+  <img src="https://img.shields.io/badge/SvelteKit-FF3E00?style=flat&logo=svelte&logoColor=white" alt="SvelteKit" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/TailwindCSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white" alt="TailwindCSS" />
+  <img src="https://img.shields.io/badge/DaisyUI-5A0EF8?style=flat&logo=daisyui&logoColor=white" alt="DaisyUI" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=flat&logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Engine-Headscale-2D3036?style=flat" alt="Powered by Headscale" />
+  <img src="https://img.shields.io/badge/License-MIT-22c55e?style=flat" alt="License: MIT" />
+</p>
 
 ---
 
-## Recursos
+BigScale is a self-hosted VPN coordinator built on top of the open-source [Headscale](https://github.com/juanfont/headscale) engine, packaged as `bigscale` and shipped together with a modern web panel for managing users, devices and authentication keys.
 
-- **Coordenador VPN** auto-hospedado — você controla seus dados, sem dependência da Tailscale Inc.
-- **Painel web** moderno (SvelteKit + DaisyUI), tema claro/escuro, responsivo.
-- **Idiomas**: Inglês, Português (Brasil), Espanhol.
-- **Login com usuário e senha** — primeiro acesso força troca da senha default.
-- **Gestão completa**: usuários, dispositivos, preauth keys, API keys.
-- **Zero-config**: 1 comando e o stack roda — chave de API e senha são geradas/trocadas pelo painel.
+Pair it with the desktop client **[BigLace](https://github.com/big-comm/biglace)** to connect Linux machines to your network.
 
----
+## Features
 
-## Instalação rápida
+- **Self-hosted VPN coordinator** — you own your data, no dependency on Tailscale Inc.
+- **Modern web panel** (SvelteKit + DaisyUI) with light/dark themes, fully responsive.
+- **i18n**: English, Portuguese (Brazil), Spanish.
+- **Username/password login** — first login forces the default password to be changed.
+- **Full management**: users, devices, preauth keys, API keys, routes, tags.
+- **Visual ACL editor** with a fallback advanced JSON (HuJSON) mode.
+- **Server health badge** in the sidebar with live polling.
+- **Zero-config**: one command brings the stack up — API key and admin password are generated/rotated by the panel itself.
 
-### Pré-requisitos
+## Quick start
+
+### Requirements
 - Docker + Docker Compose v2
-- (Em produção) domínio público com HTTPS via reverse proxy (Caddy, Nginx, Traefik…)
+- (Production) a public domain with HTTPS through a reverse proxy (Caddy, Nginx, Traefik, …)
 
-### Passos
+### Steps
 
 ```bash
 git clone https://github.com/talesam/bigscale.git
@@ -33,111 +51,106 @@ cd bigscale
 docker compose up -d
 ```
 
-Pronto. Acesse o painel e faça login com **admin** / **bigscale** — o painel força você a trocar a senha imediatamente. A `BIGSCALE_API_KEY` é gerada automaticamente pelo serviço `bigscale-init` na primeira execução e ficou guardada num volume Docker.
+That's it. Open the panel and sign in with **admin** / **bigscale** — you will be required to change the password immediately. The `BIGSCALE_API_KEY` is generated automatically by the `bigscale-init` service on first boot and stored in a Docker volume.
 
-Em desenvolvimento local, o painel sobe na **3000** e o servidor na **18080** (via `docker-compose.override.yml`). Em produção, configure seu reverse proxy:
+In local development, the panel listens on **3000** and the server on **18080** (via `docker-compose.override.yml`). In production, point your reverse proxy at the panel:
 
 ```caddyfile
-seu-dominio.com {
+your-domain.com {
     reverse_proxy bigscale-panel:3000
 }
 ```
 
-O endpoint público do **servidor** (porta `8080` interna) deve apontar pro `bigscale-server:8080` para que os clientes Tailscale/BigLace consigam conectar — geralmente em um subdomínio separado, ex: `vpn.seu-dominio.com → bigscale-server:8080`.
+The public **server** endpoint (internal port `8080`) must reach `bigscale-server:8080` so that Tailscale/BigLace clients can connect — typically on a separate subdomain, e.g. `vpn.your-domain.com → bigscale-server:8080`.
 
----
+## Environment variables (all optional)
 
-## Variáveis de ambiente (todas opcionais)
-
-| Variável | Descrição | Padrão |
+| Variable | Description | Default |
 |---|---|---|
-| `ADMIN_USERNAME` | Usuário inicial do painel | `admin` |
-| `ADMIN_PASSWORD` | Senha inicial do painel | `bigscale` |
+| `ADMIN_USERNAME` | Initial panel username | `admin` |
+| `ADMIN_PASSWORD` | Initial panel password | `bigscale` |
 
-`ADMIN_USERNAME` / `ADMIN_PASSWORD` são apenas seeds — uma vez que o admin troca a senha pelo painel, o valor armazenado no volume `bigscale-panel-data` é o que vale.
+`ADMIN_USERNAME` / `ADMIN_PASSWORD` are seeds only — once the admin changes the password from the panel, the value persisted in the `bigscale-panel-data` volume is what counts.
 
-A chave da API do servidor (`BIGSCALE_API_KEY_FILE`) é gerada automaticamente. A `BIGSCALE_SERVER_URL` é fixada internamente em `http://bigscale-server:8080` via `docker-compose.yml`.
+The server API key (`BIGSCALE_API_KEY_FILE`) is generated automatically. `BIGSCALE_SERVER_URL` is hard-coded internally to `http://bigscale-server:8080` via `docker-compose.yml`.
 
----
+## Usage
 
-## Uso
+1. Open the panel on your domain.
+2. Sign in with `admin` / `bigscale` (you will be forced to change the password immediately).
+3. In **Users**, create a user and generate an **authentication key (preauth key)**.
+4. Share the public server URL and the auth key with the end user.
+5. The user pastes the URL + auth key into the **BigLace** app (or runs `tailscale up --login-server=<URL> --authkey=<KEY>`).
 
-1. Acesse o painel pelo seu domínio.
-2. Login: `admin` / `bigscale` (você será forçado a trocar imediatamente).
-3. Em **Usuários**, crie um usuário e gere uma **chave de autenticação (preauth key)**.
-4. Compartilhe a URL pública do servidor + a authkey com o usuário final.
-5. O usuário cola URL + authkey no app **BigLace** (ou roda `tailscale up --login-server=<URL> --authkey=<KEY>`).
-
----
-
-## Arquitetura
+## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│  Cliente (BigLace ou tailscale CLI)     │
+│  Client (BigLace or tailscale CLI)      │
 └─────────────────┬───────────────────────┘
-                  │ WireGuard via protocolo Headscale
+                  │ WireGuard via Headscale protocol
                   ▼
 ┌─────────────────────────────────────────┐
-│        bigscale-server (motor VPN)      │  ← coordenação P2P
+│        bigscale-server (VPN engine)     │  ← P2P coordination
 └─────────────────────────────────────────┘
                   ▲
-                  │ HTTP API (interno)
+                  │ HTTP API (internal)
 ┌─────────────────┴───────────────────────┐
 │   bigscale-panel (SvelteKit + Node)     │  ← admin web
-│  • Sessão server-side (cookie httpOnly) │
-│  • Senha do admin em /data/admin.json   │
+│  • Server-side session (httpOnly cookie)│
+│  • Admin password in /data/admin.json   │
 │  • Proxy /api/bs/v1 → bigscale-server   │
 └─────────────────────────────────────────┘
 
-bigscale-init (one-shot, encerra após rodar):
-  espera o server, executa `bigscale apikeys create`
-  e escreve a chave em volume compartilhado.
+bigscale-init (one-shot, exits after running):
+  waits for the server, runs `bigscale apikeys create`,
+  writes the key to a shared volume.
 ```
 
-A chave da API do servidor **nunca** é enviada ao navegador. Todas as chamadas do painel passam pelo proxy `/api/bs/v1/*`, que valida a sessão e adiciona o header `Authorization` server-side. A chave fica em volume Docker `bigscale-shared`, montado read-only pelo painel.
+The server API key **never** reaches the browser. All panel calls go through the `/api/bs/v1/*` proxy, which validates the session and adds the `Authorization` header server-side. The key lives in the Docker volume `bigscale-shared`, mounted read-only by the panel.
 
----
+## Building images
 
-## Build da imagem
-
-A imagem do painel é gerada via `docker compose build`. Para incluir metadados de versão (commit, data) nos LABELs OCI das imagens, use o script:
+The panel image is produced by `docker compose build`. To embed version metadata (commit, date) in OCI image labels, use the helper script:
 
 ```bash
 ./scripts/build.sh
 ```
 
-O script lê a versão de `package.json`, a data atual, e o hash curto do commit, e os injeta como `BIGSCALE_VERSION`, `BUILD_DATE` e `VCS_REF` no build de **ambas** as imagens (`bigscale/server:VERSION` e `bigscale/panel:VERSION`). Inspecione com:
+The script reads the version from `package.json`, the current date, and the short commit hash, and injects them as `BIGSCALE_VERSION`, `BUILD_DATE` and `VCS_REF` into the build of **both** images (`bigscale/server:VERSION` and `bigscale/panel:VERSION`). Inspect with:
 
 ```bash
 docker inspect bigscale/panel:latest --format '{{json .Config.Labels}}' | jq
 docker inspect bigscale/server:latest --format '{{json .Config.Labels}}' | jq
 ```
 
-Essas variáveis **não vão para o `.env`** — são exclusivas do build e ficam embutidas nas imagens.
+These variables **do not go into `.env`** — they are build-only and are baked into the images.
 
----
-
-## Desenvolvimento
+## Development
 
 ```bash
 npm install
-npm run dev   # painel em http://localhost:8080
+npm run dev   # panel on http://localhost:8080
 ```
 
-Para dev local, suba só o servidor (que ficará na 18080 via `docker-compose.override.yml`) e exporte:
+For local development, bring up only the server (which listens on 18080 via `docker-compose.override.yml`) and export the env:
 
 ```bash
 docker compose up -d bigscale-server bigscale-init
 export BIGSCALE_SERVER_URL=http://localhost:18080
-# A chave foi gerada pelo bigscale-init e está no volume bigscale-shared.
-# Para usar em dev local fora do docker, copie:
+# The key was generated by bigscale-init and lives in the bigscale-shared volume.
+# To use it from local dev outside Docker, copy it out:
 docker run --rm -v bigscale_bigscale-shared:/s alpine cat /s/api-key
-export BIGSCALE_API_KEY=<chave-copiada>
+export BIGSCALE_API_KEY=<copied-key>
 ```
 
----
+## Tech stack
 
-## Licença
+- **Frontend** — [SvelteKit](https://kit.svelte.dev/), [TypeScript](https://www.typescriptlang.org/), [TailwindCSS](https://tailwindcss.com/), [DaisyUI](https://daisyui.com/), [Vite](https://vitejs.dev/)
+- **Backend (panel)** — [Node.js](https://nodejs.org/) (SvelteKit Node adapter)
+- **VPN engine** — [Headscale](https://github.com/juanfont/headscale)
+- **Container runtime** — [Docker](https://www.docker.com/) + Docker Compose v2
 
-MIT
+## License
+
+[MIT](LICENSE) © BigScale contributors

@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { getApiKeys, createApiKey, expireApiKey } from '$lib/api';
+	import {
+		getApiKeys, createApiKey, expireApiKey,
+		getPolicy, setPolicy,
+		getHealth, getUsers
+	} from '$lib/api';
 	import { addToast, theme } from '$lib/stores';
 	import { logout as apiLogout } from '$lib/api';
 	import { t, locale, LOCALES, type Locale } from '$lib/i18n';
 	import type { ApiKey } from '$lib/types';
 	import DateTimePicker from '$lib/components/DateTimePicker.svelte';
+	import AclEditor from '$lib/components/AclEditor.svelte';
 
 	let apiKeys: ApiKey[] = [];
 	let keysLoading = false;
@@ -17,12 +22,53 @@
 	let expireTarget: ApiKey | null = null;
 	let expireLoading = false;
 
+	// ACL
+	let policyText = '';
+	let policyLoading = false;
+	let policySaving = false;
+	let policyDirty = false;
+	let policyError = '';
+	// Lista de usernames qualificados (`name@bigscale.net`) — usada como sugestão no editor visual
+	let userSuggestions: string[] = [];
+
+	// Sistema
+	let health: { ok: boolean; version?: string } = { ok: false };
+	let healthLoading = false;
+
+	// Exemplo mínimo de policy — apenas para mostrar a estrutura.
+	// Usernames seguem o formato user@base_domain (ex.: alice@bigscale.net).
+	const ACL_TEMPLATE_EXAMPLE = `// Exemplo de policy — adapte para sua rede.
+// Sem policy ou com "*" → "*:*", todos os dispositivos se enxergam.
+{
+  "groups": {
+    "group:admins": []
+  },
+  "tagOwners": {},
+  "acls": [
+    // Permite tudo (default da rede sem ACL)
+    { "action": "accept", "src": ["*"], "dst": ["*:*"] }
+  ]
+}`;
+
 	onMount(() => {
 		const d = new Date();
 		d.setFullYear(d.getFullYear() + 1);
 		newKeyExpiry = d.toISOString().slice(0, 16);
 		loadApiKeys();
+		loadPolicy();
+		loadHealth();
+		loadUserSuggestions();
 	});
+
+	async function loadUserSuggestions() {
+		try {
+			const users = await getUsers();
+			// headscale exige formato user@base_domain — incluímos as duas formas como sugestão
+			userSuggestions = users.flatMap((u) => [`${u.name}@bigscale.net`, u.name]);
+		} catch {
+			userSuggestions = [];
+		}
+	}
 
 	async function loadApiKeys() {
 		keysLoading = true;
@@ -58,6 +104,53 @@
 			newKeyCopied = true;
 			setTimeout(() => (newKeyCopied = false), 2000);
 		});
+	}
+
+	async function loadPolicy() {
+		policyLoading = true;
+		policyError = '';
+		try {
+			const p = await getPolicy();
+			const raw = p.policy ?? '';
+			// Pretty-print quando vier minificado (ignora se falhar — pode ser HuJSON com comentários)
+			try {
+				policyText = raw ? JSON.stringify(JSON.parse(raw), null, 2) : '';
+			} catch {
+				policyText = raw;
+			}
+			policyDirty = false;
+		} catch (e: unknown) {
+			policyError = e instanceof Error ? e.message : 'erro';
+		} finally {
+			policyLoading = false;
+		}
+	}
+
+	async function savePolicy() {
+		policySaving = true;
+		policyError = '';
+		try {
+			const p = await setPolicy(policyText);
+			policyText = p.policy ?? policyText;
+			policyDirty = false;
+			addToast($t('settings.acl.saved'));
+		} catch (e: unknown) {
+			policyError = e instanceof Error ? e.message : 'erro';
+			addToast(policyError, 'error');
+		} finally {
+			policySaving = false;
+		}
+	}
+
+	function loadAclTemplate() {
+		policyText = ACL_TEMPLATE_EXAMPLE;
+		policyDirty = true;
+	}
+
+	async function loadHealth() {
+		healthLoading = true;
+		try { health = await getHealth(); }
+		finally { healthLoading = false; }
 	}
 
 	async function logout() {
@@ -194,10 +287,67 @@
 		</div>
 	</div>
 
-	<!-- Server info -->
+	<!-- ACL / Policy -->
 	<div class="card bg-base-100 border border-base-200 shadow-sm">
-		<div class="card-body">
-			<h2 class="font-semibold mb-2">{$t('settings.server.title')}</h2>
+		<div class="card-body gap-4">
+			<div class="flex items-center justify-between gap-2">
+				<div>
+					<h2 class="font-semibold">{$t('settings.acl.title')}</h2>
+					<p class="text-xs text-base-content/50 mt-0.5">{$t('settings.acl.hint')}</p>
+				</div>
+				<div class="flex gap-2">
+					<button class="btn btn-ghost btn-xs" on:click={loadAclTemplate} type="button">
+						{$t('settings.acl.template')}
+					</button>
+					<button class="btn btn-ghost btn-xs" on:click={loadPolicy} disabled={policyLoading} type="button">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+					</button>
+				</div>
+			</div>
+
+			{#if policyLoading}
+				<div class="flex justify-center py-4"><span class="loading loading-spinner loading-sm"></span></div>
+			{:else}
+				<AclEditor
+					bind:value={policyText}
+					users={userSuggestions}
+					onChange={() => (policyDirty = true)}
+				/>
+
+				{#if policyError}
+					<p class="text-xs text-error">{policyError}</p>
+				{/if}
+
+				<div class="flex justify-end gap-2">
+					<button class="btn btn-primary btn-sm" on:click={savePolicy} disabled={!policyDirty || policySaving} type="button">
+						{#if policySaving}<span class="loading loading-spinner loading-xs"></span>{/if}
+						{$t('common.save')}
+					</button>
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Sistema -->
+	<div class="card bg-base-100 border border-base-200 shadow-sm">
+		<div class="card-body gap-3">
+			<div class="flex items-center justify-between">
+				<h2 class="font-semibold">{$t('settings.server.title')}</h2>
+				<button class="btn btn-ghost btn-xs" on:click={loadHealth} disabled={healthLoading} type="button">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+					</svg>
+				</button>
+			</div>
+			<div class="flex items-center gap-2 text-sm">
+				<span class="inline-block w-2.5 h-2.5 rounded-full {health.ok ? 'bg-success' : 'bg-error'}"></span>
+				<span>{health.ok ? $t('settings.server.online') : $t('settings.server.offline')}</span>
+				{#if health.version}
+					<span class="text-base-content/50">· v{health.version}</span>
+				{/if}
+			</div>
 			<p class="text-xs text-base-content/50">
 				{$t('settings.server.hint')}
 			</p>

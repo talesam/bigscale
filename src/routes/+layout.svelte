@@ -1,13 +1,20 @@
 <script lang="ts">
 	import '../app.css';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { theme, toasts } from '$lib/stores';
-	import { logout as apiLogout } from '$lib/api';
+	import { logout as apiLogout, getHealth } from '$lib/api';
 	import { initLocale, t } from '$lib/i18n';
 
 	$: isLogin = $page.url.pathname === '/login';
+
+	let serverHealth: { ok: boolean; version?: string } = { ok: false };
+	let healthTimer: ReturnType<typeof setInterval> | null = null;
+
+	async function refreshHealth() {
+		serverHealth = await getHealth();
+	}
 
 	onMount(() => {
 		initLocale();
@@ -20,6 +27,15 @@
 			document.documentElement.setAttribute('data-theme', tt);
 			localStorage.setItem('theme', tt);
 		});
+
+		if (!isLogin) {
+			refreshHealth();
+			healthTimer = setInterval(refreshHealth, 30000);
+		}
+	});
+
+	onDestroy(() => {
+		if (healthTimer) clearInterval(healthTimer);
 	});
 
 	function toggleTheme() {
@@ -76,9 +92,26 @@
 			<nav class="flex flex-col bg-base-100 border-r border-base-200 min-h-full py-4">
 				<!-- Logo -->
 				<div class="px-5 mb-6 flex items-center gap-3">
-					<div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-content" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+					<div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center overflow-hidden">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 64 64" fill="none">
+							<g stroke="currentColor" class="text-primary-content/70" stroke-width="3" stroke-linecap="round">
+								<line x1="14" y1="14" x2="50" y2="14" />
+								<line x1="50" y1="14" x2="50" y2="50" />
+								<line x1="50" y1="50" x2="14" y2="50" />
+								<line x1="14" y1="50" x2="14" y2="14" />
+								<line x1="14" y1="14" x2="32" y2="32" />
+								<line x1="50" y1="14" x2="32" y2="32" />
+								<line x1="50" y1="50" x2="32" y2="32" />
+								<line x1="14" y1="50" x2="32" y2="32" />
+							</g>
+							<g class="fill-primary-content">
+								<circle cx="14" cy="14" r="4" />
+								<circle cx="50" cy="14" r="4" />
+								<circle cx="50" cy="50" r="4" />
+								<circle cx="14" cy="50" r="4" />
+							</g>
+							<circle cx="32" cy="32" r="6.5" class="fill-primary-content" />
+							<circle cx="32" cy="32" r="3" class="fill-primary" />
 						</svg>
 					</div>
 					<span class="font-extrabold text-lg text-base-content">BigScale</span>
@@ -104,6 +137,12 @@
 
 				<!-- Bottom -->
 				<div class="px-2 mt-4 flex flex-col gap-1">
+					<!-- Server health -->
+					<div class="px-3 py-2 mb-1 flex items-center gap-2 text-xs text-base-content/60" title={serverHealth.ok ? $t('settings.server.online') : $t('settings.server.offline')}>
+						<span class="inline-block w-2 h-2 rounded-full {serverHealth.ok ? 'bg-success' : 'bg-error'}"></span>
+						<span>{serverHealth.ok ? $t('settings.server.online') : $t('settings.server.offline')}</span>
+						{#if serverHealth.version}<span class="text-base-content/40 ml-auto">v{serverHealth.version}</span>{/if}
+					</div>
 					<button class="btn btn-ghost btn-sm justify-start gap-3 font-medium w-full" on:click={toggleTheme}>
 						{#if $theme === 'dark'}
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">

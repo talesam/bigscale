@@ -1,9 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getDevices, getUsers, renameDevice, deleteDevice, moveDevice } from '$lib/api';
+	import {
+		getDevices, getUsers, renameDevice, deleteDevice, moveDevice,
+		expireDevice, setDeviceTags,
+		getNodeRoutes, enableRoute, disableRoute
+	} from '$lib/api';
 	import { addToast } from '$lib/stores';
 	import { t } from '$lib/i18n';
-	import type { Device, User } from '$lib/types';
+	import type { Device, Route, User } from '$lib/types';
 
 	let devices: Device[] = [];
 	let users: User[] = [];
@@ -12,9 +16,12 @@
 
 	// Modal state
 	let modalDevice: Device | null = null;
-	let modalAction: 'rename' | 'move' | 'delete' | null = null;
+	let modalAction: 'rename' | 'move' | 'delete' | 'tags' | 'routes' | 'expire' | null = null;
 	let modalValue = '';
 	let modalLoading = false;
+	let modalTags: string[] = [];
+	let modalTagInput = '';
+	let modalRoutes: Route[] = [];
 
 	$: filtered = devices.filter(
 		(d) =>
@@ -39,17 +46,51 @@
 		}
 	}
 
-	function openModal(device: Device, action: typeof modalAction) {
+	async function openModal(device: Device, action: typeof modalAction) {
 		modalDevice = device;
 		modalAction = action;
 		modalValue = action === 'rename' ? (device.givenName || device.name) : device.user?.id || '';
+		modalTags = (device.forcedTags ?? []).map((t) => t.replace(/^tag:/, ''));
+		modalTagInput = '';
+		modalRoutes = [];
 		modalLoading = false;
+
+		if (action === 'routes') {
+			try {
+				modalRoutes = await getNodeRoutes(device.id);
+			} catch (e: unknown) {
+				addToast(e instanceof Error ? e.message : $t('common.error'), 'error');
+			}
+		}
 	}
 
 	function closeModal() {
 		modalDevice = null;
 		modalAction = null;
 		modalValue = '';
+		modalTags = [];
+		modalTagInput = '';
+		modalRoutes = [];
+	}
+
+	function addTagFromInput() {
+		const v = modalTagInput.trim().replace(/^tag:/, '');
+		if (v && !modalTags.includes(v)) modalTags = [...modalTags, v];
+		modalTagInput = '';
+	}
+
+	function removeTag(t: string) {
+		modalTags = modalTags.filter((x) => x !== t);
+	}
+
+	async function toggleRoute(route: Route) {
+		try {
+			if (route.enabled) await disableRoute(route.id);
+			else await enableRoute(route.id);
+			if (modalDevice) modalRoutes = await getNodeRoutes(modalDevice.id);
+		} catch (e: unknown) {
+			addToast(e instanceof Error ? e.message : $t('common.error'), 'error');
+		}
 	}
 
 	async function confirmModal() {
@@ -65,6 +106,12 @@
 			} else if (modalAction === 'delete') {
 				await deleteDevice(modalDevice.id);
 				addToast($t('devices.toast.removed'));
+			} else if (modalAction === 'tags') {
+				await setDeviceTags(modalDevice.id, modalTags.map((t) => `tag:${t}`));
+				addToast($t('devices.toast.tagsSaved'));
+			} else if (modalAction === 'expire') {
+				await expireDevice(modalDevice.id);
+				addToast($t('devices.toast.expired'));
 			}
 			await load();
 			closeModal();
@@ -174,6 +221,21 @@
 											<path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
 										</svg>
 									</button>
+									<button class="btn btn-ghost btn-xs" title={$t('devices.action.tags')} on:click={() => openModal(device, 'tags')}>
+										<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
+										</svg>
+									</button>
+									<button class="btn btn-ghost btn-xs" title={$t('devices.action.routes')} on:click={() => openModal(device, 'routes')}>
+										<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+										</svg>
+									</button>
+									<button class="btn btn-ghost btn-xs text-warning" title={$t('devices.action.expire')} on:click={() => openModal(device, 'expire')}>
+										<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+										</svg>
+									</button>
 									<button class="btn btn-ghost btn-xs text-error" title={$t('devices.action.remove')} on:click={() => openModal(device, 'delete')}>
 										<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 											<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -210,9 +272,12 @@
 							<span>{device.user?.name || $t('common.dash')}</span>
 							<span>{relativeTime(device.lastSeen)}</span>
 						</div>
-						<div class="flex gap-2 justify-end">
+						<div class="flex flex-wrap gap-2 justify-end">
 							<button class="btn btn-ghost btn-xs" on:click={() => openModal(device, 'rename')}>{$t('devices.action.rename')}</button>
 							<button class="btn btn-ghost btn-xs" on:click={() => openModal(device, 'move')}>{$t('devices.action.move')}</button>
+							<button class="btn btn-ghost btn-xs" on:click={() => openModal(device, 'tags')}>{$t('devices.action.tags')}</button>
+							<button class="btn btn-ghost btn-xs" on:click={() => openModal(device, 'routes')}>{$t('devices.action.routes')}</button>
+							<button class="btn btn-ghost btn-xs text-warning" on:click={() => openModal(device, 'expire')}>{$t('devices.action.expire')}</button>
 							<button class="btn btn-ghost btn-xs text-error" on:click={() => openModal(device, 'delete')}>{$t('devices.action.remove')}</button>
 						</div>
 					</div>
@@ -246,18 +311,77 @@
 				<p class="text-base-content/60 text-sm mb-4">
 					{@html $t('devices.modal.deleteWarning', { name: `<strong>${modalDevice.givenName || modalDevice.name}</strong>` })}
 				</p>
+			{:else if modalAction === 'expire'}
+				<h3 class="font-bold text-lg mb-2">{$t('devices.modal.expireTitle')}</h3>
+				<p class="text-base-content/60 text-sm mb-4">
+					{@html $t('devices.modal.expireWarning', { name: `<strong>${modalDevice.givenName || modalDevice.name}</strong>` })}
+				</p>
+			{:else if modalAction === 'tags'}
+				<h3 class="font-bold text-lg mb-2">{$t('devices.modal.tagsTitle')}</h3>
+				<p class="text-xs text-base-content/50 mb-3">{$t('devices.modal.tagsHint')}</p>
+				<div class="flex flex-wrap gap-1.5 mb-3 min-h-8">
+					{#each modalTags as tag}
+						<span class="badge badge-primary badge-sm gap-1">
+							tag:{tag}
+							<button type="button" class="text-primary-content/80 hover:text-primary-content" on:click={() => removeTag(tag)}>×</button>
+						</span>
+					{/each}
+				</div>
+				<div class="flex gap-2">
+					<input
+						type="text"
+						class="input input-bordered input-sm flex-1"
+						placeholder={$t('devices.modal.tagsPlaceholder')}
+						bind:value={modalTagInput}
+						on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(); } }}
+					/>
+					<button type="button" class="btn btn-sm" on:click={addTagFromInput}>{$t('common.add')}</button>
+				</div>
+			{:else if modalAction === 'routes'}
+				<h3 class="font-bold text-lg mb-2">{$t('devices.modal.routesTitle')}</h3>
+				<p class="text-xs text-base-content/50 mb-3">{$t('devices.modal.routesHint')}</p>
+				{#if modalRoutes.length === 0}
+					<p class="text-sm text-base-content/40 py-4 text-center">{$t('devices.modal.routesEmpty')}</p>
+				{:else}
+					<div class="space-y-2">
+						{#each modalRoutes as route}
+							<div class="flex items-center justify-between p-2 bg-base-200 rounded">
+								<div>
+									<code class="text-xs">{route.prefix}</code>
+									{#if route.isPrimary}
+										<span class="badge badge-xs badge-info ml-2">primary</span>
+									{/if}
+								</div>
+								<input
+									type="checkbox"
+									class="toggle toggle-sm toggle-success"
+									checked={route.enabled}
+									on:change={() => toggleRoute(route)}
+								/>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 
 			<div class="modal-action mt-6">
 				<button class="btn btn-ghost" on:click={closeModal} disabled={modalLoading}>{$t('common.cancel')}</button>
-				<button
-					class="btn {modalAction === 'delete' ? 'btn-error' : 'btn-primary'}"
-					on:click={confirmModal}
-					disabled={modalLoading}
-				>
-					{#if modalLoading}<span class="loading loading-spinner loading-sm"></span>{/if}
-					{modalAction === 'delete' ? $t('common.remove') : $t('common.save')}
-				</button>
+				{#if modalAction !== 'routes'}
+					<button
+						class="btn {modalAction === 'delete' || modalAction === 'expire' ? (modalAction === 'expire' ? 'btn-warning' : 'btn-error') : 'btn-primary'}"
+						on:click={confirmModal}
+						disabled={modalLoading}
+					>
+						{#if modalLoading}<span class="loading loading-spinner loading-sm"></span>{/if}
+						{modalAction === 'delete'
+							? $t('common.remove')
+							: modalAction === 'expire'
+							? $t('devices.action.expire')
+							: $t('common.save')}
+					</button>
+				{:else}
+					<button class="btn btn-primary" on:click={closeModal}>{$t('common.done')}</button>
+				{/if}
 			</div>
 		</div>
 		<button class="modal-backdrop" on:click={closeModal}></button>
