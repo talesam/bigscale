@@ -54,10 +54,23 @@ docker compose up -d
 
 That's it. Open the panel and sign in with **admin** / **bigscale** — you will be required to change the password immediately. The internal API key is generated automatically by the container on first boot and stored in the `bigscale-panel-data` volume.
 
-In local development, the panel listens on **3000** and the engine on **18080** (via `docker-compose.override.yml`). In production, point your reverse proxy at the single container:
+In local development, the panel listens on **3000** and the engine on **18080** (via `docker-compose.override.yml`). In production, see [Reverse proxy](#reverse-proxy).
+
+## Reverse proxy
+
+The container exposes two ports:
+
+| Port | What it serves | Who consumes it |
+|---|---|---|
+| `3000` | Admin web panel (SvelteKit) | You, in the browser |
+| `8080` | VPN engine (Tailscale/Headscale protocol) | BigLace / Tailscale clients |
+
+Both **must be reachable over HTTPS in production**. You have two options:
+
+### Option 1 — Two subdomains (simplest, recommended)
 
 ```caddyfile
-your-domain.com {
+panel.your-domain.com {
     reverse_proxy bigscale:3000
 }
 
@@ -66,7 +79,33 @@ vpn.your-domain.com {
 }
 ```
 
-The public **engine** endpoint (internal port `8080`) must be reachable by Tailscale/BigLace clients — typically on a separate subdomain such as `vpn.your-domain.com → bigscale:8080`. Both panel and engine live in the same container, so a single proxy host with path-based routing also works.
+Each proxy host stays trivial: a single forward, zero custom locations. The trade-off is one extra TLS certificate.
+
+### Option 2 — Single domain with path-based routing
+
+If you only have one subdomain available, route the engine paths to `bigscale:8080` and everything else to the panel `bigscale:3000`. The Tailscale/Headscale protocol uses **exactly four** paths — no others need to be exposed:
+
+| Path | Target |
+|---|---|
+| `/key` | `bigscale:8080` |
+| `/machine/` | `bigscale:8080` |
+| `/ts2021` | `bigscale:8080` |
+| `/derp/` | `bigscale:8080` |
+| _everything else_ | `bigscale:3000` |
+
+Caddy example:
+
+```caddyfile
+vpn.your-domain.com {
+    @engine path /key /machine/* /ts2021 /derp/*
+    reverse_proxy @engine bigscale:8080
+    reverse_proxy bigscale:3000
+}
+```
+
+Nginx Proxy Manager: set the proxy host's default forward to `bigscale:3000` and add four custom locations for the paths above pointing to `bigscale:8080`. Enable **Websockets Support** so the `/ts2021` and `/derp/` upgrades work, and **HTTP/2**.
+
+> **Do not expose `/api/v1/`, `/health`, `/version` or `/swagger` publicly.** They are administrative endpoints; the panel already talks to the engine over `localhost` inside the container.
 
 ## Environment variables (all optional)
 

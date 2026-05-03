@@ -17,8 +17,12 @@ echo ""
 BIGSCALE_VERSION="$VERSION" BUILD_DATE="$BUILD_DATE" VCS_REF="$VCS_REF" \
   docker compose build "$@"
 
-# Tag adicional com a versão (além de :latest)
-docker tag bigscale:latest "bigscale:$VERSION" 2>/dev/null || true
-
-echo ""
-echo "✓ Imagem disponível: bigscale:latest, bigscale:$VERSION"
+# Tag adicional com a versão (além de :latest), só se for uma versão "real"
+if [ "$VERSION" != "dev" ] && [ "$VERSION" != "unknown" ]; then
+  docker tag bigscale:latest "bigscale:$VERSION" 2>/dev/null || true
+  echo ""
+  echo "✓ Imagem disponível: bigscale:latest, bigscale:$VERSION"
+else
+  echo ""
+  echo "✓ Imagem disponível: bigscale:latest"
+fi
