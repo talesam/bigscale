@@ -19,7 +19,7 @@ export interface Device {
 }
 
 export interface PreAuthKey {
-	user: string;
+	user: User;
 	id: string;
 	key: string;
 	createdAt: string;

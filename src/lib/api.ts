@@ -126,8 +126,9 @@ export async function deleteRoute(routeId: string): Promise<void> {
 // ─── PreAuth Keys ─────────────────────────────────────────────────────────────
 
 export async function getPreAuthKeys(userId: string): Promise<PreAuthKey[]> {
+	// Headscale's ?user= filter is ignored by the REST API — filter client-side.
 	const d = await req<{ preAuthKeys: PreAuthKey[] }>('GET', 'preauthkey', undefined, { user: userId });
-	return d.preAuthKeys ?? [];
+	return (d.preAuthKeys ?? []).filter((k) => k.user?.id === userId);
 }
 
 export async function createPreAuthKey(userId: string, expiration: string, reusable: boolean, ephemeral: boolean): Promise<string> {
