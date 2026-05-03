@@ -1,114 +1,29 @@
 services:
 
-  # ─── BigScale Server (coordenador VPN) ────────────────────────────────────
-  bigscale-server:
-    image: bigscale/server:latest
+  # ─── BigScale (server + painel + init em uma imagem só) ───────────────────
+  bigscale:
+    image: bigscale:latest
     build:
       context: .
-      dockerfile: Dockerfile.server
+      dockerfile: Dockerfile
       args:
         VERSION:    ${BIGSCALE_VERSION:-dev}
         BUILD_DATE: ${BUILD_DATE:-}
         VCS_REF:    ${VCS_REF:-}
-    container_name: bigscale-server
+    container_name: bigscale
     restart: unless-stopped
-    command: serve
+    environment:
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-bigscale}
+      COOKIE_SECURE:  ${COOKIE_SECURE:-false}
     volumes:
       - ./config:/etc/bigscale
       - bigscale-data:/var/lib/bigscale
-      - bigscale-socket:/var/run/bigscale
-    networks:
-      - bigscale-net
-    expose:
-      - "8080"
-
-  # ─── BigScale Init (gera a API key uma vez, depois encerra) ───────────────
-  bigscale-init:
-    image: bigscale/server:latest
-    container_name: bigscale-init
-    restart: "no"
-    depends_on:
-      bigscale-server:
-        condition: service_started
-    volumes:
-      - ./config:/etc/bigscale:ro
-      - bigscale-data:/var/lib/bigscale
-      - bigscale-shared:/shared
-      - bigscale-socket:/var/run/bigscale
-    networks:
-      - bigscale-net
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        if [ -s /shared/api-key ] && grep -q '^hskey-api-' /shared/api-key; then
-          echo "[init] /shared/api-key já tem chave válida — nada a fazer."
-          exit 0
-        fi
-        rm -f /shared/api-key
-        echo "[init] aguardando bigscale-server (HTTP + Unix socket)..."
-        i=0
-        until wget -q -O /dev/null http://bigscale-server:8080/health 2>/dev/null \
-              && [ -S /var/run/bigscale/bigscale.sock ] \
-              && bigscale apikeys list >/dev/null 2>&1; do
-          i=$$((i+1))
-          if [ $$i -gt 90 ]; then echo "[init] timeout aguardando server"; exit 1; fi
-          sleep 1
-        done
-        echo "[init] server pronto. gerando nova API key..."
-        for try in 1 2 3 4 5; do
-          KEY=$$(bigscale apikeys create --expiration 9999d 2>/dev/null | grep -E '^hskey-api-' | tail -1)
-          if [ -n "$$KEY" ]; then
-            echo "$$KEY" > /shared/api-key
-            chmod 600 /shared/api-key
-            echo "[init] chave salva em /shared/api-key (tentativa $$try)"
-            exit 0
-          fi
-          echo "[init] tentativa $$try falhou, retry em 2s..."
-          sleep 2
-        done
-        echo "[init] não conseguiu gerar chave depois de 5 tentativas"
-        exit 1
-
-  # ─── BigScale Panel (Admin Web UI) ────────────────────────────────────────
-  bigscale-panel:
-    image: bigscale/panel:latest
-    build:
-      context: .
-      args:
-        VERSION:    ${BIGSCALE_VERSION:-dev}
-        BUILD_DATE: ${BUILD_DATE:-}
-        VCS_REF:    ${VCS_REF:-}
-    container_name: bigscale-panel
-    restart: unless-stopped
-    environment:
-      BIGSCALE_SERVER_URL:   http://bigscale-server:8080
-      BIGSCALE_API_KEY_FILE: /shared/api-key
-      ADMIN_DATA_DIR:        /data
-      ADMIN_USERNAME:        ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD:        ${ADMIN_PASSWORD:-bigscale}
-      COOKIE_SECURE:         ${COOKIE_SECURE:-false}
-      PORT: 3000
-    volumes:
-      - bigscale-shared:/shared:ro
       - bigscale-panel-data:/data
-    networks:
-      - bigscale-net
     expose:
       - "3000"
-    depends_on:
-      bigscale-server:
-        condition: service_started
-      bigscale-init:
-        condition: service_completed_successfully
-
-networks:
-  bigscale-net:
-    name: bigscale-net
+      - "8080"
 
 volumes:
   bigscale-data:
-  bigscale-shared:
   bigscale-panel-data:
-  bigscale-socket:

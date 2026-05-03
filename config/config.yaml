@@ -7,7 +7,7 @@ server_url: https://biglace.biglinux.com.br
 listen_addr: 0.0.0.0:8080
 grpc_listen_addr: 0.0.0.0:50443
 
-# Unix socket — usado pelo CLI (bigscale apikeys, etc) e pelo bigscale-init
+# Unix socket — usado pelo CLI (bigscale apikeys, etc) e pelo entrypoint
 unix_socket: /var/run/bigscale/bigscale.sock
 unix_socket_permission: "0770"
 

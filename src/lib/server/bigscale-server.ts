@@ -10,7 +10,7 @@ export async function bs(
 		throw new Error('BIGSCALE_SERVER_URL não configurada — defina a variável de ambiente antes de subir o painel.');
 	}
 	if (!BIGSCALE_API_KEY) {
-		throw new Error('BIGSCALE_API_KEY não configurada — gerada automaticamente pelo bigscale-init no primeiro start.');
+		throw new Error('BIGSCALE_API_KEY não configurada — gerada automaticamente pelo entrypoint no primeiro start.');
 	}
 	const url = new URL(`${BIGSCALE_SERVER_URL}/api/v1/${path}`);
 	if (query) {
