@@ -24,6 +24,11 @@ services:
       - ./config:/etc/bigscale
       - bigscale-data:/var/lib/bigscale
       - bigscale-panel-data:/data
+    # STUN/3478 must be reachable from the public internet so peers can
+    # NAT-punch through the embedded DERP relay. Without this, all traffic
+    # falls back to DERP-only (works) but direct P2P never upgrades.
+    ports:
+      - "3478:3478/udp"
     expose:
       - "3000"
       - "8080"

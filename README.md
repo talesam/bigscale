@@ -83,29 +83,125 @@ Each proxy host stays trivial: a single forward, zero custom locations. The trad
 
 ### Option 2 — Single domain with path-based routing
 
-If you only have one subdomain available, route the engine paths to `bigscale:8080` and everything else to the panel `bigscale:3000`. The Tailscale/Headscale protocol uses **exactly four** paths — no others need to be exposed:
+If you only have one subdomain available, route the engine paths to `bigscale:8080` and everything else to the panel `bigscale:3000`. The Tailscale/Headscale protocol uses these paths — no others need to be exposed:
 
-| Path | Target |
-|---|---|
-| `/key` | `bigscale:8080` |
-| `/machine/` | `bigscale:8080` |
-| `/ts2021` | `bigscale:8080` |
-| `/derp/` | `bigscale:8080` |
-| _everything else_ | `bigscale:3000` |
+| Path | Match | Target |
+|---|---|---|
+| `/key` | prefix | `bigscale:8080` |
+| `/machine/` | prefix | `bigscale:8080` |
+| `/ts2021` | prefix | `bigscale:8080` |
+| `/derp` | **exact** | `bigscale:8080` |
+| `/derp/` | prefix | `bigscale:8080` |
+| _everything else_ | — | `bigscale:3000` |
+
+> **Both `/derp` (exact) and `/derp/` (prefix) are required.** Tailscale clients open the WebSocket relay with `GET /derp` (no trailing slash). If only `/derp/` is configured, the request falls through to the panel and gets a `301 → /derp/`, which the WebSocket upgrade does not survive. Symptom: clients connect fine but log `Tailscale could not connect to the DERP relay server` and never establish peer traffic.
 
 Caddy example:
 
 ```caddyfile
 vpn.your-domain.com {
-    @engine path /key /machine/* /ts2021 /derp/*
+    @engine path /key /machine/* /ts2021 /derp /derp/*
     reverse_proxy @engine bigscale:8080
     reverse_proxy bigscale:3000
 }
 ```
 
-Nginx Proxy Manager: set the proxy host's default forward to `bigscale:3000` and add four custom locations for the paths above pointing to `bigscale:8080`. Enable **Websockets Support** so the `/ts2021` and `/derp/` upgrades work, and **HTTP/2**.
+Caddy's `path` matcher is exact for `/derp` and prefix for `/derp/*` automatically — listing both is enough.
+
+Nginx Proxy Manager: set the default forward to `bigscale:3000` and add Custom Locations for the engine paths pointing to `bigscale:8080`. Enable **Websockets Support** and **HTTP/2**.
+
+NPM caveat — the `/derp` exact match: NPM's "Custom Location" field does not accept the `= /derp` syntax. Workaround: open the proxy host → **Advanced** tab → paste:
+
+```nginx
+location = /derp {
+    proxy_pass         http://bigscale:8080;
+    proxy_http_version 1.1;
+    proxy_set_header   Host                $host;
+    proxy_set_header   Upgrade             $http_upgrade;
+    proxy_set_header   Connection          $http_connection;
+    proxy_set_header   X-Real-IP           $remote_addr;
+    proxy_set_header   X-Forwarded-For     $remote_addr;
+    proxy_set_header   X-Forwarded-Proto   $scheme;
+    proxy_buffering    off;
+    proxy_request_buffering off;
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
+}
+```
+
+Keep the regular `/derp/` (with trailing slash) as a normal Custom Location — NPM accepts that one through the UI.
 
 > **Do not expose `/api/v1/`, `/health`, `/version` or `/swagger` publicly.** They are administrative endpoints; the panel already talks to the engine over `localhost` inside the container.
+
+## Embedded DERP relay & STUN (UDP 3478)
+
+BigScale ships with Headscale's embedded DERP relay enabled by default (`derp.server.enabled: true` in `config.yaml`). The relay listens on **UDP 3478** for STUN. **This port is not exposed by the default `docker-compose.yml`** — clients can connect to the coordinator and see each other in the panel, but peer-to-peer traffic will silently fail.
+
+### What goes wrong if UDP 3478 is closed
+
+- `tailscale netcheck` reports `UDP: false` and `IPv4: (no addr found)`
+- Peers behind NAT cannot discover each other's public address → no direct P2P
+- The DERP relay over HTTPS still works as fallback, so traffic flows through the server (slower, uses your bandwidth)
+- If the `/derp` exact-match location (above) is missing too, even the relay fallback fails and `tailscale ping` times out
+
+### Fix
+
+1. **Publish UDP 3478** in `docker-compose.yml`:
+   ```yaml
+   services:
+     bigscale:
+       ports:
+         - "3478:3478/udp"
+       expose:
+         - "3000"
+         - "8080"
+   ```
+
+2. **Open the host firewall**:
+   ```bash
+   sudo ufw allow 3478/udp comment "BigScale STUN"
+   ```
+
+3. **Open the cloud edge firewall** (Oracle Cloud Security List, AWS Security Group, GCP Firewall Rule, Hetzner Firewall, …): allow UDP 3478 inbound from `0.0.0.0/0`. The host firewall is not enough — most cloud providers block all UDP at the edge by default.
+
+Verify on a connected client: `tailscale netcheck` should show `UDP: true` and a discovered IPv4 address. `tailscale ping <peer-ip>` should report `pong from … via DERP(...)` first, then upgrade to `via <ip>:<port>` once NAT-punching succeeds.
+
+### Alternative: skip the embedded DERP
+
+If you don't want to expose UDP at all (simpler firewall, but every byte of peer traffic flows through Tailscale's network), disable the embedded DERP and use Tailscale's public relays in `config.yaml`:
+
+```yaml
+derp:
+  server:
+    enabled: false
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+```
+
+## ACL policy — user reference format
+
+The visual ACL editor accepts free-form text in `src`/`dst`/group members and **does not validate** that the references match real users. Following Headscale's convention, user references must be **`username@`** — the username followed by `@`, with **nothing** after:
+
+```json
+{
+  "groups": {
+    "group:devs": ["alice@", "bob@"]
+  },
+  "acls": [
+    { "action": "accept", "src": ["group:devs"], "dst": ["group:devs:*"] }
+  ]
+}
+```
+
+Common mistakes that the editor will save without warning:
+
+| What you typed | Why it doesn't work |
+|---|---|
+| `@alice` | `@` at the start — no match, silently fails |
+| `alice@your-domain.com` | Only matches if the user's `email` field is set; users created via the panel (no OIDC) have `email` empty |
+| `alice` | No `@` — interpreted as a literal token, not a user reference |
+
+`bigscale policy check -f policy.json` reports "Policy is valid" for all of the above (it's a syntactic check, not semantic), so a green light from `policy check` does not guarantee that the references resolve to actual users. If peers appear online in the panel but `tailscale status` does not list them as peers, the most likely cause is a malformed user reference in a `src`/group.
 
 ## Environment variables (all optional)
 

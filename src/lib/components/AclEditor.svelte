@@ -125,6 +125,56 @@
 	$: groupMemberSuggestions = users;
 	$: tagOwnerSuggestions = users;
 
+	// ─── Validators ─────────────────────────────────────────────────────────────
+	// Headscale expects bare `username@` (trailing @, no domain). The form
+	// "@username" and "user@bigscale.net" both fail policy validation server-side
+	// without a clear error in the panel, so we catch them here.
+	const USER_RE = /^[a-z0-9][a-z0-9_-]*@$/i;
+	const GROUP_RE = /^group:[a-z0-9][a-z0-9_-]*$/i;
+	const TAG_RE = /^tag:[a-z0-9][a-z0-9_-]*$/i;
+	const AUTOGROUP_RE = /^autogroup:(internet|self|members|tagged)$/i;
+
+	function userHint(v: string): string | null {
+		if (v.startsWith('@')) return `use "${v.slice(1)}@" (trailing @, not leading)`;
+		const at = v.indexOf('@');
+		if (at === -1) return `missing trailing @ — try "${v}@"`;
+		if (at !== v.length - 1) return `drop the part after @ — try "${v.slice(0, at)}@"`;
+		if (!USER_RE.test(v)) return 'invalid username (use letters, digits, _ or -)';
+		return null;
+	}
+
+	function validateGroupMember(v: string): string | null {
+		return userHint(v);
+	}
+
+	function validateTagOwner(v: string): string | null {
+		if (v.startsWith('group:')) {
+			return GROUP_RE.test(v) ? null : 'invalid group name';
+		}
+		return userHint(v);
+	}
+
+	function validateAclRef(v: string): string | null {
+		if (v === '*') return null;
+		if (v.startsWith('group:')) return GROUP_RE.test(v) ? null : 'invalid group name';
+		if (v.startsWith('tag:')) return TAG_RE.test(v) ? null : 'invalid tag name';
+		if (v.startsWith('autogroup:'))
+			return AUTOGROUP_RE.test(v) ? null : 'unknown autogroup (internet|self|members|tagged)';
+		return userHint(v);
+	}
+
+	function validateAclDst(v: string): string | null {
+		// dst entries are "<ref>:<port>" — split, validate the ref, then sanity-check the port.
+		const colon = v.lastIndexOf(':');
+		if (colon === -1) return 'missing ":port" suffix (use ":*" for any port)';
+		const ref = v.slice(0, colon);
+		const port = v.slice(colon + 1);
+		const refErr = validateAclRef(ref);
+		if (refErr) return refErr;
+		if (port === '*' || /^\d+(-\d+)?$/.test(port)) return null;
+		return 'invalid port (use "*", a number, or a range like "80-90")';
+	}
+
 	// ─── JSON tab ───────────────────────────────────────────────────────────────
 	let jsonText = '';
 	let jsonError = '';
@@ -194,6 +244,7 @@
 					values={members}
 					placeholder={$t('settings.acl.groups.memberPh')}
 					suggestions={groupMemberSuggestions}
+					validate={validateGroupMember}
 					onChange={(next) => setGroupMembers(key, next)}
 				/>
 			</div>
@@ -234,6 +285,7 @@
 					values={owners}
 					placeholder={$t('settings.acl.tags.ownerPh')}
 					suggestions={tagOwnerSuggestions}
+					validate={validateTagOwner}
 					onChange={(next) => setTagOwners(key, next)}
 				/>
 			</div>
@@ -291,6 +343,7 @@
 						values={rule.src}
 						placeholder={$t('settings.acl.rules.srcPh')}
 						suggestions={srcSuggestions}
+						validate={validateAclRef}
 						onChange={(next) => updateRule(idx, { src: next })}
 					/>
 				</div>
@@ -303,6 +356,7 @@
 						values={rule.dst}
 						placeholder={$t('settings.acl.rules.dstPh')}
 						suggestions={dstSuggestions}
+						validate={validateAclDst}
 						onChange={(next) => updateRule(idx, { dst: next })}
 					/>
 				</div>
