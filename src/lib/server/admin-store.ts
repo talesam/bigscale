@@ -5,8 +5,8 @@ import { ADMIN_DATA_DIR, ADMIN_DEFAULT_USER, ADMIN_DEFAULT_PASS } from './config
 
 interface AdminRecord {
 	username: string;
-	passwordHash: string;       // formato: scrypt$N$r$p$saltHex$hashHex
-	passwordChanged: boolean;   // false enquanto o usuário não trocou a senha default
+	passwordHash: string;       // format: scrypt$N$r$p$saltHex$hashHex
+	passwordChanged: boolean;   // false until the user changes the default password
 	updatedAt: string;
 }
 

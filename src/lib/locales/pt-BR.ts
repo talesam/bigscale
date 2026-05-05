@@ -39,6 +39,16 @@ export const ptBR: Record<string, string> = {
 	'login.envHint':          'Primeiro acesso? Use admin / bigscale — você será solicitado a trocar a senha.',
 	'login.invalidCredentials': 'Credenciais inválidas',
 	'login.authError':        'Erro ao autenticar',
+	'login.showPassword':     'Mostrar senha',
+	'login.hidePassword':     'Ocultar senha',
+
+	// Date/time picker
+	'picker.now':             'Agora',
+	'picker.clear':           'Limpar',
+	'picker.preset24h':       '24h',
+	'picker.preset48h':       '48h',
+	'picker.preset7d':        '7 dias',
+	'picker.preset30d':       '30 dias',
 
 	// Change password
 	'changePassword.title':           'Trocar senha',
@@ -81,6 +91,7 @@ export const ptBR: Record<string, string> = {
 	'devices.modal.tagsTitle':      'Tags do dispositivo',
 	'devices.modal.tagsHint':       'Tags são usadas em regras de ACL. Prefixo "tag:" é adicionado automaticamente.',
 	'devices.modal.tagsPlaceholder': 'ex: server, prod, ci',
+	'devices.modal.tagsCannotEmpty': 'Este dispositivo foi registrado com tags e precisa manter pelo menos uma. Adicione uma tag antes de salvar.',
 	'devices.modal.routesTitle':    'Rotas anunciadas',
 	'devices.modal.routesHint':     'Rotas que este dispositivo anuncia para a rede. Habilite para liberar o tráfego.',
 	'devices.modal.routesEmpty':    'Este dispositivo não anuncia nenhuma rota.',

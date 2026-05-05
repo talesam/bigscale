@@ -1,17 +1,17 @@
 # BigScale Server Configuration
 # Rename this file to config.yaml and edit as needed
 
-# URL pública do servidor (deve bater com PUBLIC_URL no docker-compose)
+# Public URL of the server (must match BIGSCALE_PUBLIC_URL in docker-compose)
 server_url: https://biglace.biglinux.com.br
 
 listen_addr: 0.0.0.0:8080
 grpc_listen_addr: 0.0.0.0:50443
 
-# Unix socket — usado pelo CLI (bigscale apikeys, etc) e pelo entrypoint
+# Unix socket — used by the CLI (`bigscale apikeys`, etc.) and the entrypoint
 unix_socket: /var/run/bigscale/bigscale.sock
 unix_socket_permission: "0770"
 
-# Chaves criptográficas (geradas automaticamente no primeiro start)
+# Cryptographic keys (generated automatically on first start)
 private_key_path: /var/lib/bigscale/private.key
 noise:
   private_key_path: /var/lib/bigscale/noise_private.key
@@ -49,6 +49,6 @@ prefixes:
   v4: 100.64.0.0/10
   v6: fd7a:115c:a1e0::/48
 
-# Política de ACL armazenada no banco de dados; o painel edita via API
+# ACL policy stored in the database; the panel edits it via the API.
 policy:
   mode: database

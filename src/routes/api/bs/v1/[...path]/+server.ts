@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 
 function guard(cookies: Parameters<RequestHandler>[0]['cookies']) {
 	const token = cookies.get('bs_session');
-	if (!token || !validateSession(token)) throw error(401, 'Não autenticado');
+	if (!token || !validateSession(token)) throw error(401, 'Not authenticated');
 }
 
 async function proxy(method: string, path: string, request: Request, cookies: Parameters<RequestHandler>[0]['cookies'], url: URL) {

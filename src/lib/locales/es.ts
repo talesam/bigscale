@@ -39,6 +39,16 @@ export const es: Record<string, string> = {
 	'login.envHint':          '¿Primera vez? Usa admin / bigscale — se te pedirá cambiar la contraseña.',
 	'login.invalidCredentials': 'Credenciales inválidas',
 	'login.authError':        'Error al autenticar',
+	'login.showPassword':     'Mostrar contraseña',
+	'login.hidePassword':     'Ocultar contraseña',
+
+	// Date/time picker
+	'picker.now':             'Ahora',
+	'picker.clear':           'Limpiar',
+	'picker.preset24h':       '24h',
+	'picker.preset48h':       '48h',
+	'picker.preset7d':        '7 días',
+	'picker.preset30d':       '30 días',
 
 	// Change password
 	'changePassword.title':           'Cambiar contraseña',
@@ -81,6 +91,7 @@ export const es: Record<string, string> = {
 	'devices.modal.tagsTitle':      'Etiquetas del dispositivo',
 	'devices.modal.tagsHint':       'Las etiquetas se usan en reglas de ACL. El prefijo "tag:" se añade automáticamente.',
 	'devices.modal.tagsPlaceholder': 'ej: server, prod, ci',
+	'devices.modal.tagsCannotEmpty': 'Este dispositivo se registró con etiquetas y debe mantener al menos una. Añade una etiqueta antes de guardar.',
 	'devices.modal.routesTitle':    'Rutas anunciadas',
 	'devices.modal.routesHint':     'Rutas que este dispositivo anuncia a la red. Activa para permitir el tráfico.',
 	'devices.modal.routesEmpty':    'Este dispositivo no anuncia rutas.',
@@ -128,6 +139,7 @@ export const es: Record<string, string> = {
 	'users.toast.created':          'Usuario creado.',
 	'users.toast.renamed':          'Usuario renombrado.',
 	'users.toast.removed':          'Usuario eliminado.',
+	'users.toast.notEmpty':         'No se puede eliminar: el usuario aún tiene dispositivos. Elimínalos primero en Dispositivos.',
 	'users.toast.keyExpired':       'Clave expirada.',
 	'users.toast.loadError':        'Error al cargar usuarios',
 	'users.toast.keysLoadError':    'Error al cargar claves',

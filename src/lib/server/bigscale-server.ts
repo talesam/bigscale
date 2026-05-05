@@ -7,16 +7,15 @@ export async function bs(
 	query?: Record<string, string>
 ): Promise<Response> {
 	if (!BIGSCALE_SERVER_URL) {
-		throw new Error('BIGSCALE_SERVER_URL não configurada — defina a variável de ambiente antes de subir o painel.');
+		throw new Error('BIGSCALE_SERVER_URL is not configured — set the environment variable before starting the panel.');
 	}
 	if (!BIGSCALE_API_KEY) {
-		throw new Error('BIGSCALE_API_KEY não configurada — gerada automaticamente pelo entrypoint no primeiro start.');
+		throw new Error('BIGSCALE_API_KEY is not configured — it is generated automatically by the entrypoint on first start.');
 	}
 	const url = new URL(`${BIGSCALE_SERVER_URL}/api/v1/${path}`);
 	if (query) {
 		for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
 	}
-	const t0 = Date.now();
 	const res = await fetch(url.toString(), {
 		method,
 		headers: {
@@ -26,7 +25,6 @@ export async function bs(
 		},
 		body: body !== undefined ? JSON.stringify(body) : undefined
 	});
-	console.log(`[bs] ${method} ${path} → ${res.status} (${Date.now() - t0}ms)`);
 	return res;
 }
 

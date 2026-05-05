@@ -1,5 +1,5 @@
-// Modelo estruturado de policy ACL e (de)serialização tolerante a HuJSON
-// (JSON com comentários // e /* */ e trailing commas).
+// Structured ACL policy model + HuJSON-tolerant (de)serialization
+// (JSON allowing // and /* */ comments and trailing commas).
 
 export type AclAction = 'accept' | 'drop';
 
@@ -19,8 +19,8 @@ export function emptyPolicy(): AclPolicy {
 	return { groups: {}, tagOwners: {}, acls: [] };
 }
 
-// Remove comentários (// e /* */) e trailing commas → vira JSON válido.
-// Não interpreta strings (mantém aspas), e ignora delimitadores dentro de strings.
+// Strip // and /* */ comments and trailing commas, leaving valid JSON.
+// Does not interpret strings (preserves quoting) and ignores delimiters inside strings.
 function stripHuJson(input: string): string {
 	let out = '';
 	let i = 0;
@@ -106,7 +106,7 @@ export function parsePolicy(text: string): AclPolicy {
 }
 
 export function serializePolicy(p: AclPolicy): string {
-	// Só inclui chaves não vazias para manter o JSON enxuto.
+	// Only emit non-empty keys to keep the JSON lean.
 	const out: Record<string, unknown> = {};
 	if (Object.keys(p.groups).length) out.groups = p.groups;
 	if (Object.keys(p.tagOwners).length) out.tagOwners = p.tagOwners;
@@ -114,10 +114,3 @@ export function serializePolicy(p: AclPolicy): string {
 	return JSON.stringify(out, null, 2);
 }
 
-export function isPolicyEmpty(p: AclPolicy): boolean {
-	return (
-		Object.keys(p.groups).length === 0 &&
-		Object.keys(p.tagOwners).length === 0 &&
-		p.acls.length === 0
-	);
-}

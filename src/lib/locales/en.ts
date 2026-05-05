@@ -39,6 +39,16 @@ export const en: Record<string, string> = {
 	'login.envHint':          'First time? Use admin / bigscale — you will be asked to change the password.',
 	'login.invalidCredentials': 'Invalid credentials',
 	'login.authError':        'Authentication error',
+	'login.showPassword':     'Show password',
+	'login.hidePassword':     'Hide password',
+
+	// Date/time picker
+	'picker.now':             'Now',
+	'picker.clear':           'Clear',
+	'picker.preset24h':       '24h',
+	'picker.preset48h':       '48h',
+	'picker.preset7d':        '7 days',
+	'picker.preset30d':       '30 days',
 
 	// Change password
 	'changePassword.title':           'Change password',
@@ -81,6 +91,7 @@ export const en: Record<string, string> = {
 	'devices.modal.tagsTitle':      'Device tags',
 	'devices.modal.tagsHint':       'Tags are used in ACL rules. The "tag:" prefix is added automatically.',
 	'devices.modal.tagsPlaceholder': 'e.g.: server, prod, ci',
+	'devices.modal.tagsCannotEmpty': 'This device was registered with tags and must keep at least one. Add a tag before saving.',
 	'devices.modal.routesTitle':    'Advertised routes',
 	'devices.modal.routesHint':     'Routes this device announces to the network. Toggle on to allow traffic.',
 	'devices.modal.routesEmpty':    'This device does not advertise any routes.',

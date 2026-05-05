@@ -177,7 +177,7 @@
 	}
 </script>
 
-<div class="max-w-4xl mx-auto space-y-6">
+<div class="max-w-5xl mx-auto space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col sm:flex-row sm:items-center gap-4">
 		<div class="flex-1">

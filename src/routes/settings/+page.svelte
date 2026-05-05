@@ -28,24 +28,24 @@
 	let policySaving = false;
 	let policyDirty = false;
 	let policyError = '';
-	// Lista de usernames qualificados (`name@bigscale.net`) — usada como sugestão no editor visual
+	// Qualified usernames (`name@bigscale.net`) used as suggestions in the visual editor.
 	let userSuggestions: string[] = [];
 
 	// Sistema
 	let health: { ok: boolean; version?: string } = { ok: false };
 	let healthLoading = false;
 
-	// Exemplo mínimo de policy — apenas para mostrar a estrutura.
-	// Usernames seguem o formato user@base_domain (ex.: alice@bigscale.net).
-	const ACL_TEMPLATE_EXAMPLE = `// Exemplo de policy — adapte para sua rede.
-// Sem policy ou com "*" → "*:*", todos os dispositivos se enxergam.
+	// Minimal policy example — only meant to show the structure.
+	// Usernames follow the user@base_domain format (e.g. alice@bigscale.net).
+	const ACL_TEMPLATE_EXAMPLE = `// Policy example — adapt to your network.
+// With no policy (or "*" → "*:*"), every device can reach every other device.
 {
   "groups": {
     "group:admins": []
   },
   "tagOwners": {},
   "acls": [
-    // Permite tudo (default da rede sem ACL)
+    // Allow everything (default for a network without ACL)
     { "action": "accept", "src": ["*"], "dst": ["*:*"] }
   ]
 }`;
@@ -63,7 +63,7 @@
 	async function loadUserSuggestions() {
 		try {
 			const users = await getUsers();
-			// headscale exige formato user@base_domain — incluímos as duas formas como sugestão
+			// Headscale requires the user@base_domain format — suggest both forms.
 			userSuggestions = users.flatMap((u) => [`${u.name}@bigscale.net`, u.name]);
 		} catch {
 			userSuggestions = [];
@@ -112,7 +112,7 @@
 		try {
 			const p = await getPolicy();
 			const raw = p.policy ?? '';
-			// Pretty-print quando vier minificado (ignora se falhar — pode ser HuJSON com comentários)
+			// Pretty-print if the policy came in minified (ignore on failure — may be HuJSON with comments).
 			try {
 				policyText = raw ? JSON.stringify(JSON.parse(raw), null, 2) : '';
 			} catch {
@@ -168,13 +168,13 @@
 	function setLocale(l: Locale) { $locale = l; }
 </script>
 
-<div class="max-w-2xl mx-auto space-y-6">
+<div class="max-w-5xl mx-auto space-y-6">
 	<div>
 		<h1 class="text-2xl font-bold">{$t('settings.title')}</h1>
 		<p class="text-base-content/50 text-sm mt-0.5">{$t('settings.subtitle')}</p>
 	</div>
 
-	<!-- Aparência -->
+	<!-- Appearance -->
 	<div class="card bg-base-100 border border-base-200 shadow-sm">
 		<div class="card-body gap-4">
 			<h2 class="font-semibold">{$t('settings.appearance')}</h2>

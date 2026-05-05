@@ -47,10 +47,26 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 	opacity: 1;
 }
 
+/* Single-line focus state — daisyUI ships inputs with a 1px border + a 2px
+   outline at 2px offset, which reads as a "double line" on focus. Collapse
+   it to a single border that just changes color. Applies to inputs,
+   textareas, selects, and label-wrapped input groups (`input` on a <label>). */
+.input:focus,
+.input:focus-within,
+.textarea:focus,
+.textarea:focus-within,
+.select:focus,
+.select:focus-within {
+	outline: none !important;
+	outline-offset: 0 !important;
+	box-shadow: none !important;
+	border-color: hsl(var(--p)) !important;
+}
+
 input[type="datetime-local"]:focus,
 input[type="date"]:focus,
 input[type="time"]:focus {
-	@apply ring-2 ring-primary/40 outline-none;
+	outline: none;
 	border-color: hsl(var(--p));
 }
 

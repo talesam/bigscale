@@ -1,45 +1,22 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { locale } from '$lib/i18n';
+	import { locale, t } from '$lib/i18n';
 
 	/** Valor em formato datetime-local: "YYYY-MM-DDTHH:mm" (sem timezone). */
 	export let value: string = '';
 	export let placeholder: string = '';
+	/** Quick relative presets shown above the calendar (24h / 48h / 7d / 30d). */
+	export let presets: boolean = true;
 
-	let wrapper: HTMLDivElement;
-	let anchor: HTMLButtonElement;
 	let open = false;
-	let popLeft = 0;
-	let popTop = 0;
-	let popWidth = 320;
-	const POP_HEIGHT = 360; // estimativa do dropdown (header + grid 6 linhas + time/actions)
 
-	function updatePosition() {
-		if (!anchor) return;
-		const r = anchor.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const margin = 8;
-		// largura: usa a do botão se for grande o bastante, senão 320 limitado à viewport
-		popWidth = Math.min(Math.max(r.width, 320), vw - margin * 2);
-		// horizontal: alinhar com o botão, mas grudar na borda se for cair fora
-		let left = r.left;
-		if (left + popWidth + margin > vw) left = Math.max(margin, vw - popWidth - margin);
-		if (left < margin) left = margin;
-		popLeft = left;
-		// vertical: abaixo do botão; se não couber, abrir para cima
-		const below = r.bottom + 8;
-		const above = r.top - 8 - POP_HEIGHT;
-		popTop = below + POP_HEIGHT <= vh - margin ? below : Math.max(margin, above);
-	}
-
-	// Data atualmente selecionada
+	// Currently selected date
 	$: selectedDate = value ? parseLocal(value) : null;
-	// Data exibida no grid (mês/ano)
+	// Date shown in the grid (month/year)
 	let viewYear = (selectedDate ?? new Date()).getFullYear();
 	let viewMonth = (selectedDate ?? new Date()).getMonth();
 
-	// Hora/minuto exibidos no input de tempo
+	// Hours/minutes shown in the time input
 	$: timeStr = selectedDate
 		? `${pad(selectedDate.getHours())}:${pad(selectedDate.getMinutes())}`
 		: '00:00';
@@ -49,7 +26,7 @@
 	}
 
 	function parseLocal(s: string): Date {
-		// Trata "YYYY-MM-DDTHH:mm" como local time
+		// Treat "YYYY-MM-DDTHH:mm" as local time
 		const [d, t = '00:00'] = s.split('T');
 		const [y, mo, da] = d.split('-').map(Number);
 		const [h, mi] = t.split(':').map(Number);
@@ -76,10 +53,10 @@
 		year: 'numeric'
 	}).format(new Date(viewYear, viewMonth, 1));
 
-	// Dias da semana traduzidos (começando no domingo)
+	// Localized weekday labels (starting on Sunday)
 	$: weekdays = (() => {
 		const fmt = new Intl.DateTimeFormat($locale, { weekday: 'short' });
-		const ref = new Date(2024, 0, 7); // 7 de janeiro de 2024 = domingo
+		const ref = new Date(2024, 0, 7); // Jan 7, 2024 = Sunday
 		return Array.from({ length: 7 }, (_, i) => {
 			const d = new Date(ref);
 			d.setDate(ref.getDate() + i);
@@ -87,11 +64,11 @@
 		});
 	})();
 
-	// Grid 6x7: 42 células — alguns dias do mês anterior + dias do atual + dias do próximo
+	// 6x7 grid: 42 cells — trailing days of the previous month + current month + leading days of the next.
 	$: grid = (() => {
 		const first = new Date(viewYear, viewMonth, 1);
 		const start = new Date(first);
-		start.setDate(1 - first.getDay()); // recua até o domingo
+		start.setDate(1 - first.getDay()); // step back to Sunday
 		return Array.from({ length: 42 }, (_, i) => {
 			const d = new Date(start);
 			d.setDate(start.getDate() + i);
@@ -114,6 +91,19 @@
 		const next = new Date(d);
 		next.setHours(cur.getHours(), cur.getMinutes(), 0, 0);
 		value = formatLocal(next);
+		// Auto-close: keeping the popover open after a click hid the trigger
+		// label, so users had to click outside to confirm the value updated.
+		open = false;
+	}
+
+	function pickPreset(hours: number) {
+		const next = new Date();
+		next.setMinutes(next.getMinutes() + hours * 60);
+		next.setSeconds(0, 0);
+		value = formatLocal(next);
+		viewYear = next.getFullYear();
+		viewMonth = next.getMonth();
+		open = false;
 	}
 
 	function onTimeChange(e: Event) {
@@ -147,12 +137,10 @@
 		value = '';
 	}
 
-	let popover: HTMLDivElement | null = null;
-
-	// Move o popover para <body> para escapar do containing block criado por
-	// transform/filter/will-change em ancestrais (ex: DaisyUI modal-box).
-	// Sem isso, `position: fixed` é resolvido contra o ancestral transformado
-	// e a barra de rolagem do modal "captura" o popover.
+	// Move the popover to <body> to escape any containing block created by
+	// transform/filter/will-change on ancestors (e.g. DaisyUI modal-box).
+	// Without this, `position: fixed` resolves against the transformed
+	// ancestor and the modal's scrollbar "captures" the popover.
 	function portal(node: HTMLElement) {
 		document.body.appendChild(node);
 		return {
@@ -166,47 +154,30 @@
 
 	function toggle() {
 		open = !open;
-		if (open) {
-			if (selectedDate) {
-				viewYear = selectedDate.getFullYear();
-				viewMonth = selectedDate.getMonth();
-			}
-			// recalcula assim que renderiza no DOM
-			queueMicrotask(updatePosition);
+		if (open && selectedDate) {
+			viewYear = selectedDate.getFullYear();
+			viewMonth = selectedDate.getMonth();
 		}
 	}
 
-	function onDocClick(e: MouseEvent) {
-		const t = e.target as Node;
-		const inWrapper = wrapper && wrapper.contains(t);
-		const inPopover = popover && popover.contains(t);
-		if (!inWrapper && !inPopover) open = false;
+	function onBackdropClick() {
+		open = false;
 	}
 	function onKey(e: KeyboardEvent) {
 		if (e.key === 'Escape') open = false;
 	}
-	function onWinChange() {
-		if (open) updatePosition();
-	}
 
 	onMount(() => {
-		document.addEventListener('mousedown', onDocClick);
 		document.addEventListener('keydown', onKey);
-		window.addEventListener('resize', onWinChange);
-		window.addEventListener('scroll', onWinChange, true);
 		return () => {
-			document.removeEventListener('mousedown', onDocClick);
 			document.removeEventListener('keydown', onKey);
-			window.removeEventListener('resize', onWinChange);
-			window.removeEventListener('scroll', onWinChange, true);
 		};
 	});
 </script>
 
-<div class="dtpicker relative" bind:this={wrapper}>
+<div class="dtpicker relative">
 	<button
 		type="button"
-		bind:this={anchor}
 		class="input input-bordered w-full flex items-center justify-between gap-2 cursor-pointer hover:border-primary/50 transition-colors"
 		class:input-primary={open}
 		on:click={toggle}
@@ -220,12 +191,18 @@
 	</button>
 
 	{#if open}
-		<div
-			use:portal
-			bind:this={popover}
-			class="fixed z-[9999] rounded-2xl bg-base-100 border border-base-300 shadow-2xl overflow-hidden"
-			style="left: {popLeft}px; top: {popTop}px; width: {popWidth}px;"
-		>
+		<div use:portal role="presentation" class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50" on:mousedown|self={onBackdropClick}>
+		<div class="rounded-2xl bg-base-100 border border-base-300 shadow-2xl overflow-hidden w-full max-w-sm max-h-[90vh] overflow-y-auto">
+			{#if presets}
+				<!-- Quick presets — relative to "now". One click sets value and closes. -->
+				<div class="flex gap-1 px-3 pt-2.5 pb-1.5 border-b border-base-300 bg-base-200/30">
+					<button type="button" class="btn btn-ghost btn-xs flex-1" on:click={() => pickPreset(24)}>{$t('picker.preset24h')}</button>
+					<button type="button" class="btn btn-ghost btn-xs flex-1" on:click={() => pickPreset(48)}>{$t('picker.preset48h')}</button>
+					<button type="button" class="btn btn-ghost btn-xs flex-1" on:click={() => pickPreset(24 * 7)}>{$t('picker.preset7d')}</button>
+					<button type="button" class="btn btn-ghost btn-xs flex-1" on:click={() => pickPreset(24 * 30)}>{$t('picker.preset30d')}</button>
+				</div>
+			{/if}
+
 			<!-- Header -->
 			<div class="flex items-center justify-between gap-2 px-3 py-2.5 bg-base-200/50 border-b border-base-300">
 				<button type="button" class="btn btn-ghost btn-xs btn-square" on:click={prevMonth} aria-label="prev">
@@ -241,7 +218,7 @@
 				</button>
 			</div>
 
-			<!-- Calendário -->
+			<!-- Calendar -->
 			<div class="px-3 py-3">
 				<div class="grid grid-cols-7 gap-1 mb-1">
 					{#each weekdays as w}
@@ -282,16 +259,17 @@
 					/>
 				</div>
 				<div class="flex gap-1">
-					<button type="button" class="btn btn-ghost btn-xs" on:click={clear}>Limpar</button>
-					<button type="button" class="btn btn-primary btn-xs" on:click={goToday}>Agora</button>
+					<button type="button" class="btn btn-ghost btn-xs" on:click={clear}>{$t('picker.clear')}</button>
+					<button type="button" class="btn btn-primary btn-xs" on:click={goToday}>{$t('picker.now')}</button>
 				</div>
 			</div>
+		</div>
 		</div>
 	{/if}
 </div>
 
 <style>
-	/* Esconde o ícone nativo do input type=time pra ficar mais limpo */
+	/* Hide the native time-input icon for a cleaner look. */
 	.dtpicker :global(input[type='time']::-webkit-calendar-picker-indicator) {
 		display: none;
 	}

@@ -16,7 +16,7 @@ async function req<T = unknown>(method: string, path: string, body?: unknown, qu
 
 	if (res.status === 401) {
 		location.href = '/login';
-		throw new Error('Sessão expirada');
+		throw new Error('Session expired');
 	}
 
 	if (!res.ok) {
@@ -39,7 +39,7 @@ export async function login(username: string, password: string): Promise<void> {
 	});
 	if (!res.ok) {
 		const d = await res.json().catch(() => ({})) as { error?: string };
-		throw new Error(d.error ?? 'Credenciais inválidas');
+		throw new Error(d.error ?? 'Invalid credentials');
 	}
 }
 
@@ -152,23 +152,25 @@ export async function createApiKey(expiration: string): Promise<string> {
 	return d.apiKey ?? '';
 }
 
+// BigScale v0.28+ returns the prefix masked as "<prefix>-***" in the list;
+// the expire/delete endpoints reject the suffix and need the bare prefix.
+function unmaskPrefix(prefix: string): string {
+	return prefix.replace(/-\*+$/, '');
+}
+
 export async function expireApiKey(prefix: string): Promise<void> {
-	// BigScale v0.28+ devolve o prefix mascarado como "<prefix>-***" no list;
-	// a API de expire não aceita o sufixo, precisa do prefix puro.
-	const cleanPrefix = prefix.replace(/-\*+$/, '');
-	await req('POST', 'apikey/expire', { prefix: cleanPrefix });
+	await req('POST', 'apikey/expire', { prefix: unmaskPrefix(prefix) });
 }
 
 export async function deleteApiKey(prefix: string): Promise<void> {
-	const cleanPrefix = prefix.replace(/-\*+$/, '');
-	await req('DELETE', `apikey/${cleanPrefix}`);
+	await req('DELETE', `apikey/${unmaskPrefix(prefix)}`);
 }
 
 // ─── Policy / ACL ─────────────────────────────────────────────────────────────
 
 export async function getPolicy(): Promise<Policy> {
-	// Policy ainda não existe → backend retorna erro "acl policy not found".
-	// Tratamos como policy vazia em vez de propagar erro.
+	// When the policy hasn't been created yet, the backend returns
+	// "acl policy not found". Treat that as an empty policy instead of an error.
 	try {
 		return await req<Policy>('GET', 'policy');
 	} catch (e: unknown) {

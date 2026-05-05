@@ -13,15 +13,16 @@ function readSecret(envValue: string | undefined, fileEnv: string | undefined): 
 }
 
 export const BIGSCALE_SERVER_URL = process.env.BIGSCALE_SERVER_URL || 'http://localhost:8080';
-// URL pública (a que clientes externos usam para falar com o coordenador).
-// Em produção atrás de proxy/TLS, defina BIGSCALE_PUBLIC_URL para o domínio público
-// (deve bater com server_url do config.yaml). Fallback: BIGSCALE_SERVER_URL.
+// Public URL — the one external clients use to reach the coordinator.
+// In production behind a proxy/TLS, set BIGSCALE_PUBLIC_URL to the public
+// domain (must match server_url in config.yaml). Falls back to BIGSCALE_SERVER_URL.
 export const BIGSCALE_PUBLIC_URL = (process.env.BIGSCALE_PUBLIC_URL || process.env.BIGSCALE_SERVER_URL || 'http://localhost:8080').replace(/\/$/, '');
 export const BIGSCALE_API_KEY    = readSecret(process.env.BIGSCALE_API_KEY, process.env.BIGSCALE_API_KEY_FILE);
 export const ADMIN_DATA_DIR      = process.env.ADMIN_DATA_DIR      || '/data';
 export const ADMIN_DEFAULT_USER  = process.env.ADMIN_USERNAME      || 'admin';
 export const ADMIN_DEFAULT_PASS  = process.env.ADMIN_PASSWORD      || 'bigscale';
-export const SESSION_TTL_MS      = 24 * 60 * 60 * 1000; // 24 h
-// Em produção atrás de reverse proxy HTTPS, defina COOKIE_SECURE=true.
-// Em dev (http://localhost), deixe vazio/false.
+export const DAY_MS              = 24 * 60 * 60 * 1000;
+export const SESSION_TTL_MS      = DAY_MS;
+// In production behind an HTTPS reverse proxy, set COOKIE_SECURE=true.
+// In dev (http://localhost), leave empty/false.
 export const COOKIE_SECURE       = process.env.COOKIE_SECURE === 'true';

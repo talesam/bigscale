@@ -9,7 +9,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	const result = verifyAdmin(username, password);
 	if (!result.ok) {
-		return json({ error: 'Credenciais inválidas' }, { status: 401 });
+		return json({ error: 'Invalid credentials' }, { status: 401 });
 	}
 
 	const token = createSession({ mustChangePassword: result.mustChangePassword });

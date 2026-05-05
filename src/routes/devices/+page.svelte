@@ -19,6 +19,7 @@
 	let modalAction: 'rename' | 'move' | 'delete' | 'tags' | 'routes' | 'expire' | null = null;
 	let modalValue = '';
 	let modalLoading = false;
+	let modalError = '';
 	let modalTags: string[] = [];
 	let modalTagInput = '';
 	let modalRoutes: Route[] = [];
@@ -54,6 +55,7 @@
 		modalTagInput = '';
 		modalRoutes = [];
 		modalLoading = false;
+		modalError = '';
 
 		if (action === 'routes') {
 			try {
@@ -71,6 +73,7 @@
 		modalTags = [];
 		modalTagInput = '';
 		modalRoutes = [];
+		modalError = '';
 	}
 
 	function addTagFromInput() {
@@ -96,6 +99,7 @@
 	async function confirmModal() {
 		if (!modalDevice) return;
 		modalLoading = true;
+		modalError = '';
 		try {
 			if (modalAction === 'rename') {
 				await renameDevice(modalDevice.id, modalValue.trim());
@@ -107,6 +111,10 @@
 				await deleteDevice(modalDevice.id);
 				addToast($t('devices.toast.removed'));
 			} else if (modalAction === 'tags') {
+				// Flush pending input so users who type a tag and click "Save" without
+				// hitting Enter / Add still get their tag persisted instead of an
+				// empty-tags request that headscale rejects.
+				if (modalTagInput.trim()) addTagFromInput();
 				await setDeviceTags(modalDevice.id, modalTags.map((t) => `tag:${t}`));
 				addToast($t('devices.toast.tagsSaved'));
 			} else if (modalAction === 'expire') {
@@ -116,7 +124,15 @@
 			await load();
 			closeModal();
 		} catch (e: unknown) {
-			addToast(e instanceof Error ? e.message : $t('common.error'), 'error');
+			const raw = e instanceof Error ? e.message : '';
+			// Headscale rejects emptying tags on a node that was registered tagged.
+			// Surface the error inline (toast gets clipped) plus a friendly hint.
+			if (modalAction === 'tags' && /cannot remove all tags/i.test(raw)) {
+				modalError = $t('devices.modal.tagsCannotEmpty');
+			} else {
+				modalError = raw || $t('common.error');
+			}
+			addToast(modalError, 'error');
 		} finally {
 			modalLoading = false;
 		}
@@ -134,7 +150,7 @@
 	}
 </script>
 
-<div class="max-w-6xl mx-auto space-y-6">
+<div class="max-w-5xl mx-auto space-y-6">
 	<!-- Header -->
 	<div class="flex flex-col sm:flex-row sm:items-center gap-4">
 		<div class="flex-1">
@@ -319,6 +335,11 @@
 			{:else if modalAction === 'tags'}
 				<h3 class="font-bold text-lg mb-2">{$t('devices.modal.tagsTitle')}</h3>
 				<p class="text-xs text-base-content/50 mb-3">{$t('devices.modal.tagsHint')}</p>
+				{#if modalError}
+					<div class="alert alert-error text-xs py-2 mb-3">
+						<span>{modalError}</span>
+					</div>
+				{/if}
 				<div class="flex flex-wrap gap-1.5 mb-3 min-h-8">
 					{#each modalTags as tag}
 						<span class="badge badge-primary badge-sm gap-1">

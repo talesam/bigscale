@@ -109,7 +109,7 @@
 		updateRule(idx, { action });
 	}
 
-	// Sugestões para src/dst: usuários, grupos, tags, *.
+	// Suggestions for src/dst: users, groups, tags, *.
 	$: srcSuggestions = [
 		'*',
 		...users,
@@ -193,7 +193,7 @@
 			onChange(jsonText);
 			jsonError = '';
 		} catch (e: unknown) {
-			jsonError = e instanceof Error ? e.message : 'JSON inválido';
+			jsonError = e instanceof Error ? e.message : 'Invalid JSON';
 		}
 	}
 </script>

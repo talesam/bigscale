@@ -22,7 +22,7 @@
 
 ---
 
-BigScale is a self-hosted VPN coordinator built on top of the open-source [Headscale](https://github.com/juanfont/headscale) engine, packaged as `bigscale` and shipped together with a modern web panel for managing users, devices and authentication keys.
+BigScale is a self-hosted VPN coordinator that bundles a Tailscale-compatible engine with a modern web panel for managing users, devices and authentication keys — all in a single Docker image. The engine is built from the open-source [Headscale](https://github.com/juanfont/headscale) source (pinned per release; see `HEADSCALE_VERSION` in the `Dockerfile`) and shipped under the `bigscale` binary name.
 
 Pair it with the desktop client **[BigLace](https://github.com/big-comm/biglace)** to connect Linux machines to your network.
 
@@ -44,13 +44,27 @@ Pair it with the desktop client **[BigLace](https://github.com/big-comm/biglace)
 - Docker + Docker Compose v2
 - (Production) a public domain with HTTPS through a reverse proxy (Caddy, Nginx, Traefik, …)
 
-### Steps
+### Option A — pre-built image (fastest)
+
+Pull the published multi-arch image (`linux/amd64` + `linux/arm64`):
+
+```bash
+docker pull talesam/bigscale:latest
+# or, from GitHub Container Registry:
+docker pull ghcr.io/talesam/bigscale:latest
+```
+
+Then drop it into your own `docker-compose.yml` (or use the one in this repo, which already references `bigscale:latest`).
+
+### Option B — build from source
 
 ```bash
 git clone https://github.com/talesam/bigscale.git
 cd bigscale
 docker compose up -d
 ```
+
+The first build compiles the VPN engine from the upstream Headscale source (pinned via `HEADSCALE_VERSION` in the `Dockerfile`) and bundles it with the panel into a single image — no external Headscale image is pulled at runtime.
 
 That's it. Open the panel and sign in with **admin** / **bigscale** — you will be required to change the password immediately. The internal API key is generated automatically by the container on first boot and stored in the `bigscale-panel-data` volume.
 
@@ -258,6 +272,12 @@ The engine API key **never** reaches the browser. All panel calls go through the
 
 ## Building the image
 
+The `Dockerfile` is a three-stage build:
+
+1. **`server-bin`** — `golang:1.25-alpine` clones the upstream Headscale repo at the pinned tag (`HEADSCALE_VERSION`, default `v0.28.0`) and compiles it from source into `/bigscale`. Reproducible build, no upstream image dependency.
+2. **`panel-build`** — `node:20-alpine` builds the SvelteKit admin panel.
+3. **final** — `node:20-alpine` with the compiled engine, the panel, and the entrypoint that orchestrates both processes.
+
 `docker compose build` produces the image. To embed version metadata (commit, date) in OCI image labels, use the helper script:
 
 ```bash
@@ -271,6 +291,27 @@ docker inspect bigscale:latest --format '{{json .Config.Labels}}' | jq
 ```
 
 These variables **do not go into `.env`** — they are build-only and are baked into the image.
+
+### Bumping the engine
+
+To track a newer Headscale release, edit the `HEADSCALE_VERSION` ARG in the `Dockerfile` (it appears in stage 1 and the final stage so the OCI label `org.bigscale.engine.version` matches what's actually in the binary), then rebuild. Bump deliberately — upstream may introduce breaking config or API changes between minor versions.
+
+### Multi-arch builds
+
+The published images at `talesam/bigscale` and `ghcr.io/talesam/bigscale` are multi-arch (`linux/amd64` + `linux/arm64`), built by the GitHub Actions workflow at `.github/workflows/docker-publish.yml` on every push to `master` and on `v*.*.*` tags.
+
+To produce a multi-arch build locally:
+
+```bash
+docker buildx create --name bigscale-builder --use --bootstrap
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t bigscale:latest \
+  --build-arg VERSION=$(jq -r .version package.json) \
+  .
+```
+
+(The default `docker` driver can only target the host arch; `buildx` with the `docker-container` driver is required for multi-arch.)
 
 ## Development
 
