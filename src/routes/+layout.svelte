@@ -13,6 +13,7 @@
 	let healthTimer: ReturnType<typeof setInterval> | null = null;
 
 	async function refreshHealth() {
+		if (isLogin) return;
 		serverHealth = await getHealth();
 	}
 
@@ -28,11 +29,15 @@
 			localStorage.setItem('theme', tt);
 		});
 
-		if (!isLogin) {
-			refreshHealth();
-			healthTimer = setInterval(refreshHealth, 30000);
-		}
+		healthTimer = setInterval(refreshHealth, 30000);
 	});
+
+	// Refresh health on first mount AND whenever the user transitions out of
+	// /login (SPA nav after login). The previous version guarded the setup
+	// in onMount with `if (!isLogin)`, which only runs once — when arriving
+	// via /login → /devices, the timer was never armed and the badge was
+	// stuck at offline forever.
+	$: if (!isLogin) refreshHealth();
 
 	onDestroy(() => {
 		if (healthTimer) clearInterval(healthTimer);
