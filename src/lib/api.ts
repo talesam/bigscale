@@ -186,7 +186,13 @@ export async function setPolicy(policy: string): Promise<Policy> {
 
 // ─── System ───────────────────────────────────────────────────────────────────
 
-export async function getHealth(): Promise<{ ok: boolean; version?: string }> {
+export type HealthResponse = {
+	ok: boolean;
+	panelVersion?: string;
+	engineVersion?: string;
+};
+
+export async function getHealth(): Promise<HealthResponse> {
 	try {
 		const res = await fetch('/api/bs/health', { credentials: 'include' });
 		if (!res.ok) return { ok: false };

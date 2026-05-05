@@ -32,7 +32,7 @@
 	let userSuggestions: string[] = [];
 
 	// Sistema
-	let health: { ok: boolean; version?: string } = { ok: false };
+	let health: { ok: boolean; panelVersion?: string; engineVersion?: string } = { ok: false };
 	let healthLoading = false;
 
 	// Minimal policy example — only meant to show the structure.
@@ -288,7 +288,7 @@
 	</div>
 
 	<!-- ACL / Policy -->
-	<div class="card bg-base-100 border border-base-200 shadow-sm">
+	<div id="acl" class="card bg-base-100 border border-base-200 shadow-sm scroll-mt-4">
 		<div class="card-body gap-4">
 			<div class="flex items-center justify-between gap-2">
 				<div>
@@ -341,11 +341,16 @@
 					</svg>
 				</button>
 			</div>
-			<div class="flex items-center gap-2 text-sm">
-				<span class="inline-block w-2.5 h-2.5 rounded-full {health.ok ? 'bg-success' : 'bg-error'}"></span>
-				<span>{health.ok ? $t('settings.server.online') : $t('settings.server.offline')}</span>
-				{#if health.version}
-					<span class="text-base-content/50">· v{health.version}</span>
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+				<div class="flex items-center gap-2">
+					<span class="inline-block w-2.5 h-2.5 rounded-full {health.ok ? 'bg-success' : 'bg-error'}"></span>
+					<span>{health.ok ? $t('settings.server.online') : $t('settings.server.offline')}</span>
+				</div>
+				{#if health.panelVersion}
+					<span class="text-base-content/50">BigScale v{health.panelVersion}</span>
+				{/if}
+				{#if health.engineVersion}
+					<span class="text-base-content/40">· {$t('settings.server.engine')} v{health.engineVersion}</span>
 				{/if}
 			</div>
 			<p class="text-xs text-base-content/50">

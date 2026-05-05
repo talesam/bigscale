@@ -80,7 +80,8 @@ ENV NODE_ENV=production \
     HEADSCALE_CONFIG=/etc/bigscale/config.yaml \
     BIGSCALE_SERVER_URL=http://127.0.0.1:8080 \
     BIGSCALE_API_KEY_FILE=/data/api-key \
-    ADMIN_DATA_DIR=/data
+    ADMIN_DATA_DIR=/data \
+    BIGSCALE_VERSION=${VERSION}
 
 VOLUME ["/var/lib/bigscale", "/etc/bigscale", "/data"]
 EXPOSE 3000 8080 50443 3478/udp

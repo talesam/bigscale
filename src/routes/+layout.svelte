@@ -9,7 +9,7 @@
 
 	$: isLogin = $page.url.pathname === '/login';
 
-	let serverHealth: { ok: boolean; version?: string } = { ok: false };
+	let serverHealth: { ok: boolean; panelVersion?: string; engineVersion?: string } = { ok: false };
 	let healthTimer: ReturnType<typeof setInterval> | null = null;
 
 	async function refreshHealth() {
@@ -143,10 +143,15 @@
 				<!-- Bottom -->
 				<div class="px-2 mt-4 flex flex-col gap-1">
 					<!-- Server health -->
-					<div class="px-3 py-2 mb-1 flex items-center gap-2 text-xs text-base-content/60" title={serverHealth.ok ? $t('settings.server.online') : $t('settings.server.offline')}>
-						<span class="inline-block w-2 h-2 rounded-full {serverHealth.ok ? 'bg-success' : 'bg-error'}"></span>
-						<span>{serverHealth.ok ? $t('settings.server.online') : $t('settings.server.offline')}</span>
-						{#if serverHealth.version}<span class="text-base-content/40 ml-auto">v{serverHealth.version}</span>{/if}
+					<div class="px-3 py-2 mb-1 flex flex-col gap-0.5 text-xs text-base-content/60" title={serverHealth.ok ? $t('settings.server.online') : $t('settings.server.offline')}>
+						<div class="flex items-center gap-2">
+							<span class="inline-block w-2 h-2 rounded-full {serverHealth.ok ? 'bg-success' : 'bg-error'}"></span>
+							<span>{serverHealth.ok ? $t('settings.server.online') : $t('settings.server.offline')}</span>
+							{#if serverHealth.panelVersion}<span class="text-base-content/40 ml-auto">v{serverHealth.panelVersion}</span>{/if}
+						</div>
+						{#if serverHealth.engineVersion}
+							<div class="pl-4 text-base-content/40">{$t('settings.server.engine')} v{serverHealth.engineVersion}</div>
+						{/if}
 					</div>
 					<button class="btn btn-ghost btn-sm justify-start gap-3 font-medium w-full" on:click={toggleTheme}>
 						{#if $theme === 'dark'}

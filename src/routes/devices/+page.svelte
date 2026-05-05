@@ -20,6 +20,7 @@
 	let modalValue = '';
 	let modalLoading = false;
 	let modalError = '';
+	let modalShowTagOwnersLink = false;
 	let modalTags: string[] = [];
 	let modalTagInput = '';
 	let modalRoutes: Route[] = [];
@@ -56,6 +57,7 @@
 		modalRoutes = [];
 		modalLoading = false;
 		modalError = '';
+		modalShowTagOwnersLink = false;
 
 		if (action === 'routes') {
 			try {
@@ -74,6 +76,7 @@
 		modalTagInput = '';
 		modalRoutes = [];
 		modalError = '';
+		modalShowTagOwnersLink = false;
 	}
 
 	function addTagFromInput() {
@@ -100,6 +103,7 @@
 		if (!modalDevice) return;
 		modalLoading = true;
 		modalError = '';
+		modalShowTagOwnersLink = false;
 		try {
 			if (modalAction === 'rename') {
 				await renameDevice(modalDevice.id, modalValue.trim());
@@ -129,6 +133,14 @@
 			// Surface the error inline (toast gets clipped) plus a friendly hint.
 			if (modalAction === 'tags' && /cannot remove all tags/i.test(raw)) {
 				modalError = $t('devices.modal.tagsCannotEmpty');
+			} else if (modalAction === 'tags' && /invalid or not permitted/i.test(raw)) {
+				// Engine rejects tags that aren't declared in the ACL policy under
+				// `tagOwners`. Extract the offending tag name so the message can name
+				// it, and direct the user to Settings → Tag owners.
+				const m = raw.match(/tag:([^\]\s,]+)/i);
+				const tag = m ? m[1] : '';
+				modalError = $t('devices.modal.tagsNotPermitted', { tag });
+				modalShowTagOwnersLink = true;
 			} else {
 				modalError = raw || $t('common.error');
 			}
@@ -336,8 +348,13 @@
 				<h3 class="font-bold text-lg mb-2">{$t('devices.modal.tagsTitle')}</h3>
 				<p class="text-xs text-base-content/50 mb-3">{$t('devices.modal.tagsHint')}</p>
 				{#if modalError}
-					<div class="alert alert-error text-xs py-2 mb-3">
+					<div class="alert alert-error text-xs py-2 mb-3 flex-col items-start gap-2">
 						<span>{modalError}</span>
+						{#if modalShowTagOwnersLink}
+							<a href="/settings#acl" class="btn btn-xs btn-error btn-outline">
+								{$t('devices.modal.tagsOpenSettings')}
+							</a>
+						{/if}
 					</div>
 				{/if}
 				<div class="flex flex-wrap gap-1.5 mb-3 min-h-8">
