@@ -1,7 +1,8 @@
-# Override usado em desenvolvimento/teste local.
-# Em produção, suba só com `docker-compose.yml` (sem este arquivo).
+# Local dev/test override. Loaded automatically by `docker compose` on top
+# of docker-compose.yml. In production, deploy with the base file only:
+#   docker compose -f docker-compose.yml up -d
 services:
   bigscale:
     ports:
-      - "3000:3000"     # painel admin em http://localhost:3000
-      - "18080:8080"    # API/engine na 18080 do host (8080 fica livre pro dev local)
+      - "3000:3000"     # admin panel at http://localhost:3000
+      - "18080:8080"    # API/engine on host 18080 (keep 8080 free for local dev)

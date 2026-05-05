@@ -1,6 +1,6 @@
 services:
 
-  # ─── BigScale (server + painel + init em uma imagem só) ───────────────────
+  # BigScale — coordinator (Headscale fork) + admin panel in a single image.
   bigscale:
     image: bigscale:latest
     build:
@@ -16,23 +16,25 @@ services:
       ADMIN_USERNAME:      ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD:      ${ADMIN_PASSWORD:-bigscale}
       COOKIE_SECURE:       ${COOKIE_SECURE:-false}
-      # Public URL clients reach the coordinator through (must match
-      # server_url in /etc/headscale/config.yaml). Without this, /api/v1/preauth-key
-      # falls back to http://localhost:8080 and tailscale clients can't reach it.
+      # Public URL clients reach the coordinator through (must match server_url
+      # in /etc/headscale/config.yaml). Without this, /api/v1/preauth-key falls
+      # back to http://localhost:8080 and tailscale clients can't reach it.
       BIGSCALE_PUBLIC_URL: ${BIGSCALE_PUBLIC_URL:-}
     volumes:
+      # Headscale config (config.yaml, ACLs). Edited on the host, read-only
+      # for the container in practice.
       - ./config:/etc/bigscale
-      - bigscale-data:/var/lib/bigscale
-      - bigscale-panel-data:/data
+      # Bind mounts under the project dir — NOT named volumes. Named volumes
+      # get prefixed with the Compose project name, so renaming the project
+      # folder silently creates a new empty volume and "loses" all data.
+      # Bind mounts decouple persistence from the project name.
+      - ./data/server:/var/lib/bigscale   # SQLite DB + DERP/noise private keys
+      - ./data/panel:/data                # admin.json + api-key for the panel
     # STUN/3478 must be reachable from the public internet so peers can
-    # NAT-punch through the embedded DERP relay. Without this, all traffic
-    # falls back to DERP-only (works) but direct P2P never upgrades.
+    # NAT-punch through the embedded DERP relay. Without this, traffic falls
+    # back to DERP-only (works) but direct P2P never upgrades.
     ports:
       - "3478:3478/udp"
     expose:
-      - "3000"
-      - "8080"
-
-volumes:
-  bigscale-data:
-  bigscale-panel-data:
+      - "3000"   # admin panel (SvelteKit)
+      - "8080"   # Headscale API / coordinator
