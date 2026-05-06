@@ -12,3 +12,6 @@ node_modules
 # Bind-mount runtime data — never commit users' SQLite, keys, or admin.json
 /data
 /backups
+
+# Local AI agent state — never share
+/.claude
