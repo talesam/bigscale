@@ -56,7 +56,7 @@ LABEL org.opencontainers.image.title="BigScale" \
       org.opencontainers.image.vendor="talesam" \
       org.bigscale.engine.version="${HEADSCALE_VERSION}"
 
-RUN apk add --no-cache ca-certificates wget tini bash iptables tailscale
+RUN apk add --no-cache ca-certificates wget tini bash iptables tailscale jq
 
 # Server binary built from source. The `headscale` symlink is preserved for
 # tooling that expects the upstream command name.

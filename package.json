@@ -1,6 +1,6 @@
 {
 	"name": "bigscale",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"scripts": {
 		"dev": "vite dev --port 8080 --host 0.0.0.0",
 		"build": "vite build",

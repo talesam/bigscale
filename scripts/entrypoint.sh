@@ -133,8 +133,18 @@ else
     echo "[bigscale] minting preauth key for panel peer (first boot)..."
     # Idempotent — `users create` is non-zero if the user already exists.
     /usr/local/bin/bigscale users create _panel >/dev/null 2>&1 || true
-    PANEL_PREAUTH="$(/usr/local/bin/bigscale preauthkeys create --user _panel --expiration 24h --reusable=false 2>/dev/null \
-                    | grep -E '^[a-f0-9]{40,}$' | tail -1)"
+    # v0.28 CLI: `preauthkeys create --user` requires a numeric user ID, not a
+    # name. Resolve `_panel` to its ID via `users list -o json`.
+    PANEL_USER_ID="$(/usr/local/bin/bigscale users list -o json 2>/dev/null \
+                    | jq -r '.[] | select(.name=="_panel") | .id' | head -1)"
+    if [ -z "$PANEL_USER_ID" ]; then
+      echo "[bigscale] could not resolve _panel user id"
+      PANEL_PREAUTH=""
+    else
+      # v0.28 keys are prefixed `hskey-auth-`; older builds emitted bare hex.
+      PANEL_PREAUTH="$(/usr/local/bin/bigscale preauthkeys create --user "$PANEL_USER_ID" --expiration 24h 2>/dev/null \
+                      | grep -E '^(hskey-auth-[A-Za-z0-9_-]+|[a-f0-9]{40,})$' | tail -1)"
+    fi
     if [ -z "$PANEL_PREAUTH" ]; then
       echo "[bigscale] failed to mint preauth key for panel — continuing without tailnet peer"
       kill -TERM "$TS_PID" 2>/dev/null || true
