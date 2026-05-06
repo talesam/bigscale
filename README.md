@@ -37,6 +37,8 @@ Pair it with the desktop client **[BigLace](https://github.com/big-comm/biglace)
 - **Visual ACL editor** with a fallback advanced JSON (HuJSON) mode.
 - **Server health badge** in the sidebar with live polling.
 - **Zero-config**: one command brings the stack up — API key and admin password are generated/rotated by the container itself.
+- **Panel-as-tailnet-peer** — the panel registers itself on its own tailnet (hostname `panel`, system user `_panel`) so [BigLace](https://github.com/big-comm/biglace) clients can authenticate to panel-side endpoints by tunnel identity, without trusting `X-Forwarded-For`.
+- **Per-device metadata** (`os_user`) advertised by BigLace at connect-time and merged into the device listing — used by other peers to prefill the SSH user when targeting a device.
 
 ## Quick start
 
@@ -217,6 +219,33 @@ Common mistakes that the editor will save without warning:
 
 `bigscale policy check -f policy.json` reports "Policy is valid" for all of the above (it's a syntactic check, not semantic), so a green light from `policy check` does not guarantee that the references resolve to actual users. If peers appear online in the panel but `tailscale status` does not list them as peers, the most likely cause is a malformed user reference in a `src`/group.
 
+## Panel as a tailnet peer
+
+On first boot the entrypoint registers the panel itself as a peer of its own tailnet:
+
+- A reserved system user **`_panel`** is created (idempotent).
+- A short-lived preauth key is minted and consumed by `tailscaled` (running inside the container) to bring up the **`panel`** node.
+- State persists at `/var/lib/tailscale` (bind-mounted to `./data/tailscale` by `docker-compose.yml`), so subsequent boots reuse the existing NodeKey — no new key is minted.
+
+Why: panel-side endpoints that authenticate by **tunnel identity** (e.g. `POST /api/devices/me/os-user`) need the real peer IP. Behind any reverse proxy that strips it (NPM, Caddy, …), trusting `X-Forwarded-For` would be spoofable. With the panel itself on the tailnet, BigLace clients reach it on its tailnet IP (e.g. `panel.<base_domain>:3000`) and the source IP **is** the proof of identity — looked up in the engine's node table.
+
+**`_panel` and the `panel` node are reserved.** The panel UI hides them from the user / device listings, and the `/api/bs/v1/*` proxy returns **403** on any attempt to delete them. Removing them via the CLI (`bigscale users delete _panel` / `bigscale nodes delete <id>`) would orphan the persisted `tailscaled` state and break tunnel-identity auth until the container is restarted; **don't**.
+
+The panel's own tailnet IP is exposed at `/data/panel-tailnet-ip` inside the container for debugging.
+
+Container requirements (already wired in `docker-compose.yml`):
+
+```yaml
+cap_add:
+  - NET_ADMIN
+devices:
+  - /dev/net/tun:/dev/net/tun
+volumes:
+  - ./data/tailscale:/var/lib/tailscale
+```
+
+If `/dev/net/tun` is unavailable, the entrypoint falls back to userspace networking + `tailscale serve` (still works, slightly slower). Set `BIGSCALE_DISABLE_TAILNET_PEER=true` to skip the whole step (panel still serves the cookie-auth UI but tunnel-identity endpoints will reject all requests).
+
 ## Environment variables (all optional)
 
 | Variable | Description | Default |
@@ -224,6 +253,9 @@ Common mistakes that the editor will save without warning:
 | `ADMIN_USERNAME` | Initial panel username | `admin` |
 | `ADMIN_PASSWORD` | Initial panel password | `bigscale` |
 | `COOKIE_SECURE`  | Set to `true` when serving the panel over HTTPS | `false` |
+| `BIGSCALE_PUBLIC_URL` | Public URL clients reach the coordinator through (must match `server_url` in `config.yaml`); falls back to `http://localhost:8080` | _(unset)_ |
+| `BIGSCALE_PANEL_HOSTNAME` | Hostname under which the panel registers as a tailnet peer | `panel` |
+| `BIGSCALE_DISABLE_TAILNET_PEER` | `true` to skip registering the panel on the tailnet | `false` |
 
 `ADMIN_USERNAME` / `ADMIN_PASSWORD` are seeds only — once the admin changes the password from the panel, the value persisted in the `bigscale-panel-data` volume is what counts.
 
