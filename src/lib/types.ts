@@ -16,6 +16,9 @@ export interface Device {
 	user: User;
 	online?: boolean;
 	expiry?: string;
+	// Panel-side metadata advertised by biglace at connect-time.
+	// Used by other peers to prefill the SSH user when targeting this device.
+	os_user?: string;
 }
 
 export interface PreAuthKey {
