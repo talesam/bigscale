@@ -56,7 +56,7 @@ LABEL org.opencontainers.image.title="BigScale" \
       org.opencontainers.image.vendor="talesam" \
       org.bigscale.engine.version="${HEADSCALE_VERSION}"
 
-RUN apk add --no-cache ca-certificates wget tini bash
+RUN apk add --no-cache ca-certificates wget tini bash iptables tailscale
 
 # Server binary built from source. The `headscale` symlink is preserved for
 # tooling that expects the upstream command name.
@@ -73,7 +73,7 @@ COPY --from=panel-build /app/node_modules  ./node_modules
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-RUN mkdir -p /var/lib/bigscale /etc/bigscale /var/run/bigscale /data
+RUN mkdir -p /var/lib/bigscale /etc/bigscale /var/run/bigscale /data /var/lib/tailscale /var/run/tailscale
 
 ENV NODE_ENV=production \
     PORT=3000 \
@@ -83,7 +83,7 @@ ENV NODE_ENV=production \
     ADMIN_DATA_DIR=/data \
     BIGSCALE_VERSION=${VERSION}
 
-VOLUME ["/var/lib/bigscale", "/etc/bigscale", "/data"]
+VOLUME ["/var/lib/bigscale", "/etc/bigscale", "/data", "/var/lib/tailscale"]
 EXPOSE 3000 8080 50443 3478/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

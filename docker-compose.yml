@@ -12,6 +12,13 @@ services:
         VCS_REF:    ${VCS_REF:-}
     container_name: bigscale
     restart: unless-stopped
+    # Required so tailscaled (running inside the container) can create the
+    # `tailscale0` TUN interface and route packets through it. Without these,
+    # the entrypoint falls back to userspace networking (works but slower).
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
     environment:
       ADMIN_USERNAME:      ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD:      ${ADMIN_PASSWORD:-bigscale}
@@ -30,6 +37,7 @@ services:
       # Bind mounts decouple persistence from the project name.
       - ./data/server:/var/lib/bigscale   # SQLite DB + DERP/noise private keys
       - ./data/panel:/data                # admin.json + api-key for the panel
+      - ./data/tailscale:/var/lib/tailscale  # panel-as-peer state (NodeKey, etc)
     # STUN/3478 must be reachable from the public internet so peers can
     # NAT-punch through the embedded DERP relay. Without this, traffic falls
     # back to DERP-only (works) but direct P2P never upgrades.
