@@ -31,7 +31,15 @@ FROM node:20-alpine AS panel-build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+# `--ignore-scripts` keeps third-party install scripts from running during
+# `npm ci`, but esbuild's postinstall is the step that picks the
+# arch-specific binary. Under buildx + QEMU, skipping it leaves the x64
+# binary in place even when targeting arm64, and `vite build` crashes with
+# "installed esbuild for another platform". `npm rebuild` runs the install
+# scripts only for the listed packages, so we keep the safety net for the
+# rest of the dependency tree.
+RUN npm ci --ignore-scripts \
+ && npm rebuild esbuild lightningcss
 
 COPY . .
 RUN npm run build

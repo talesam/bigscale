@@ -1,0 +1,29 @@
+# Build artifacts and dependencies — re-installed inside the image so the
+# native binaries (esbuild, lightningcss) match the target platform.
+node_modules
+build
+.svelte-kit
+
+# Local state and editor cruft
+.git
+.github
+.vscode
+.idea
+*.log
+.DS_Store
+
+# Runtime data that should never enter the image
+data
+config
+
+# CI/dev only
+docker-compose.yml
+docker-compose.*.yml
+Caddyfile
+README.md
+LICENSE
+
+# Local secrets / env
+.env
+.env.*
+!.env.example
