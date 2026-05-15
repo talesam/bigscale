@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { writable } from 'svelte/store';
 	import {
 		getDevices, getUsers, renameDevice, deleteDevice, moveDevice,
 		expireDevice, setDeviceTags,
@@ -25,17 +26,50 @@
 	let modalTagInput = '';
 	let modalRoutes: Route[] = [];
 
+	// Ticking store so "5m ago" labels keep refreshing while the page stays
+	// open. Without this the timestamps freeze at first render and a user who
+	// leaves the tab open for an hour sees "5m ago" forever.
+	const tick = writable(0);
+	let tickInterval: ReturnType<typeof setInterval> | undefined;
+
+	$: searchLower = search.toLowerCase();
 	$: filtered = devices.filter(
 		(d) =>
-			d.name.toLowerCase().includes(search.toLowerCase()) ||
-			d.givenName?.toLowerCase().includes(search.toLowerCase()) ||
-			d.ipAddresses?.some((ip) => ip.includes(search)) ||
-			d.user?.name?.toLowerCase().includes(search.toLowerCase())
+			d.name.toLowerCase().includes(searchLower) ||
+			d.givenName?.toLowerCase().includes(searchLower) ||
+			d.ipAddresses?.some((ip) => ip.toLowerCase().includes(searchLower)) ||
+			d.user?.name?.toLowerCase().includes(searchLower)
 	);
 
 	$: online = devices.filter((d) => d.online).length;
 
-	onMount(load);
+	// Void-reading $tick pulls the recomputation into Svelte's dependency
+	// graph, so every interval bump re-renders timestamp cells.
+	$: relTime = (() => {
+		void $tick;
+		return (dateStr: string) => relativeTime(dateStr);
+	})();
+	function ownerLabel(device: Device): string {
+		// Headscale uses the pseudo-user `tagged-devices` to own any node
+		// registered with `tag:`. That label means nothing to a human reader,
+		// so when we have actual tags we show the first one (e.g. `tag:ihx-client`).
+		if (device.user?.name === 'tagged-devices' && device.forcedTags?.length) {
+			return device.forcedTags[0];
+		}
+		return device.user?.name || $t('common.dash');
+	}
+	function isTagged(device: Device): boolean {
+		return device.user?.name === 'tagged-devices' && !!device.forcedTags?.length;
+	}
+
+	onMount(() => {
+		load();
+		tickInterval = setInterval(() => tick.update((n) => n + 1), 30_000);
+	});
+
+	onDestroy(() => {
+		if (tickInterval) clearInterval(tickInterval);
+	});
 
 	async function load() {
 		loading = true;
@@ -189,8 +223,42 @@
 
 	<!-- Table / Cards -->
 	{#if loading}
-		<div class="flex justify-center py-16">
-			<span class="loading loading-spinner loading-md text-primary"></span>
+		<div class="overflow-x-auto rounded-xl border border-base-200 bg-base-100 hidden md:block" aria-busy="true" aria-label={$t('common.loading')}>
+			<table class="table w-full text-sm">
+				<thead>
+					<tr class="text-xs text-base-content/50 uppercase tracking-wide">
+						<th>{$t('devices.col.status')}</th>
+						<th>{$t('devices.col.name')}</th>
+						<th>{$t('devices.col.ip')}</th>
+						<th>{$t('devices.col.user')}</th>
+						<th>{$t('devices.col.lastSeen')}</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each Array(5) as _}
+						<tr>
+							<td><span class="skeleton h-3 w-16 inline-block"></span></td>
+							<td><span class="skeleton h-3 w-32 inline-block"></span></td>
+							<td><span class="skeleton h-3 w-24 inline-block"></span></td>
+							<td><span class="skeleton h-3 w-20 inline-block"></span></td>
+							<td><span class="skeleton h-3 w-16 inline-block"></span></td>
+							<td></td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+		<div class="flex flex-col gap-3 md:hidden" aria-busy="true" aria-label={$t('common.loading')}>
+			{#each Array(3) as _}
+				<div class="card bg-base-100 border border-base-200 shadow-sm">
+					<div class="card-body p-4 gap-3">
+						<span class="skeleton h-4 w-40"></span>
+						<span class="skeleton h-3 w-24"></span>
+						<span class="skeleton h-3 w-full"></span>
+					</div>
+				</div>
+			{/each}
 		</div>
 	{:else if filtered.length === 0}
 		<div class="text-center py-16 text-base-content/40">
@@ -217,7 +285,7 @@
 					{#each filtered as device}
 						<tr class="hover">
 							<td>
-								<div class="flex items-center gap-2">
+								<div class="flex items-center gap-2" role="status" aria-live="polite">
 									<span class="w-2 h-2 rounded-full inline-block {device.online ? 'bg-success' : 'bg-base-300'}"></span>
 									<span class="text-xs {device.online ? 'text-success' : 'text-base-content/40'}">
 										{device.online ? $t('devices.online') : $t('devices.offline')}
@@ -235,8 +303,15 @@
 									<code class="text-xs bg-base-200 px-1.5 py-0.5 rounded">{device.ipAddresses[0]}</code>
 								{:else}{$t('common.dash')}{/if}
 							</td>
-							<td class="text-base-content/70">{device.user?.name || $t('common.dash')}</td>
-							<td class="text-base-content/50 text-xs">{relativeTime(device.lastSeen)}</td>
+							<td class="text-base-content/70">
+								<div class="flex items-center gap-2">
+									<span>{ownerLabel(device)}</span>
+									{#if isTagged(device)}
+										<span class="badge badge-xs badge-ghost">{$t('devices.tagged')}</span>
+									{/if}
+								</div>
+							</td>
+							<td class="text-base-content/50 text-xs">{relTime(device.lastSeen)}</td>
 							<td>
 								<div class="flex gap-1 justify-end">
 									<button class="btn btn-ghost btn-xs" title={$t('devices.action.rename')} on:click={() => openModal(device, 'rename')}>
@@ -284,7 +359,7 @@
 					<div class="card-body p-4 gap-3">
 						<div class="flex items-start justify-between">
 							<div>
-								<div class="flex items-center gap-2">
+								<div class="flex items-center gap-2" role="status" aria-live="polite">
 									<span class="w-2 h-2 rounded-full {device.online ? 'bg-success' : 'bg-base-300'}"></span>
 									<span class="font-semibold">{device.givenName || device.name}</span>
 								</div>
@@ -296,9 +371,14 @@
 								{device.online ? $t('devices.online') : $t('devices.offline')}
 							</span>
 						</div>
-						<div class="text-sm text-base-content/50 flex justify-between">
-							<span>{device.user?.name || $t('common.dash')}</span>
-							<span>{relativeTime(device.lastSeen)}</span>
+						<div class="text-sm text-base-content/50 flex justify-between items-center">
+							<span class="flex items-center gap-2">
+								<span>{ownerLabel(device)}</span>
+								{#if isTagged(device)}
+									<span class="badge badge-xs badge-ghost">{$t('devices.tagged')}</span>
+								{/if}
+							</span>
+							<span>{relTime(device.lastSeen)}</span>
 						</div>
 						<div class="flex flex-wrap gap-2 justify-end">
 							<button class="btn btn-ghost btn-xs" on:click={() => openModal(device, 'rename')}>{$t('devices.action.rename')}</button>
@@ -350,11 +430,16 @@
 				{#if modalError}
 					<div class="alert alert-error text-xs py-2 mb-3 flex-col items-start gap-2">
 						<span>{modalError}</span>
-						{#if modalShowTagOwnersLink}
-							<a href="/settings#acl" class="btn btn-xs btn-error btn-outline">
-								{$t('devices.modal.tagsOpenSettings')}
-							</a>
-						{/if}
+						<div class="flex gap-2">
+							{#if modalShowTagOwnersLink}
+								<a href="/settings#acl" class="btn btn-xs btn-error btn-outline">
+									{$t('devices.modal.tagsOpenSettings')}
+								</a>
+							{/if}
+							<button type="button" class="btn btn-xs btn-error btn-outline" on:click={confirmModal} disabled={modalLoading}>
+								{$t('devices.action.retry')}
+							</button>
+						</div>
 					</div>
 				{/if}
 				<div class="flex flex-wrap gap-1.5 mb-3 min-h-8">
