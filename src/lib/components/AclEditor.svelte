@@ -22,7 +22,13 @@
 
 	type Tab = 'visual' | 'json';
 	let tab: Tab = 'visual';
-	let showHelp = false;
+	let showHelp = true;
+
+	// The "base rule": everyone reaches their own devices. Foundational — flagged
+	// and protected so it isn't removed by accident.
+	function isBaseRule(rule: AclRule): boolean {
+		return rule.src.includes('*') && rule.dst.some((d) => d.startsWith('autogroup:self'));
+	}
 
 	let policy: AclPolicy = emptyPolicy();
 	let parseError = '';
@@ -129,6 +135,7 @@
 	}
 
 	function removeRule(idx: number) {
+		if (isBaseRule(policy.acls[idx]) && !confirm(tr('settings.acl.baseRuleConfirm'))) return;
 		policy.acls = policy.acls.filter((_, i) => i !== idx);
 		ruleKeys = ruleKeys.filter((_, i) => i !== idx);
 		commit();
@@ -183,6 +190,14 @@
 		ensureGroup('group:suporte');
 		ensureTag('tag:suporte-acesso');
 		addRuleIfAbsent(['group:suporte'], ['tag:suporte-acesso:*']);
+		commit();
+	}
+	function exOneWay() {
+		// One-way: pre-fill with two known users if available so it's concrete.
+		const a = users[0] ?? '';
+		const b = users[1] ?? '';
+		policy.acls = [...policy.acls, { action: 'accept', src: a ? [a] : [], dst: b ? [`${b}:*`] : [] }];
+		ruleKeys = [...ruleKeys, ++uidSeq];
 		commit();
 	}
 
@@ -310,6 +325,14 @@
 		<p><span class="font-semibold">{$t('settings.acl.tags.title')}:</span> {$t('settings.acl.help.tags')}</p>
 		<p><span class="font-semibold">{$t('settings.acl.rules.title')}:</span> {$t('settings.acl.help.rules')}</p>
 		<p class="text-base-content/60 text-xs pt-1">{$t('settings.acl.help.format')}</p>
+		<p class="text-base-content/60 text-xs">{$t('settings.acl.help.devices')}</p>
+		<div class="flex flex-wrap items-center gap-2 pt-1 text-xs">
+			<span class="text-base-content/60">{$t('settings.acl.legend.title')}</span>
+			<span class="badge badge-info badge-sm">{$t('settings.acl.legend.user')}</span>
+			<span class="badge badge-success badge-sm">{$t('settings.acl.legend.group')}</span>
+			<span class="badge badge-warning badge-sm">{$t('settings.acl.legend.tag')}</span>
+			<span class="badge badge-ghost badge-sm">{$t('settings.acl.legend.special')}</span>
+		</div>
 	</div>
 {/if}
 
@@ -335,6 +358,9 @@
 			</button>
 			<button type="button" class="btn btn-sm btn-outline" title={$t('settings.acl.ex.supportDesc')} on:click={exSupportTag}>
 				{$t('settings.acl.ex.support')}
+			</button>
+			<button type="button" class="btn btn-sm btn-outline" title={$t('settings.acl.ex.onewayDesc')} on:click={exOneWay}>
+				{$t('settings.acl.ex.oneway')}
 			</button>
 			<button type="button" class="btn btn-sm btn-outline" title={$t('settings.acl.ex.allowAllDesc')} on:click={exAllowAll}>
 				{$t('settings.acl.ex.allowAll')}
@@ -438,6 +464,9 @@
 			<div class="border border-base-200 rounded-lg p-3 space-y-3">
 				<div class="flex items-center gap-2 flex-wrap">
 					<span class="text-xs text-base-content/50 font-medium">#{idx + 1}</span>
+					{#if isBaseRule(rule)}
+						<span class="badge badge-sm badge-outline">🔒 {$t('settings.acl.baseRule')}</span>
+					{/if}
 					<select
 						class="select select-bordered select-sm"
 						value={rule.action}
@@ -455,6 +484,10 @@
 						</button>
 					</div>
 				</div>
+
+				{#if isBaseRule(rule)}
+					<p class="text-xs text-base-content/50">{$t('settings.acl.baseRuleDesc')}</p>
+				{/if}
 
 				<div>
 					<div class="label py-1">

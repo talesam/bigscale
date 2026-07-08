@@ -57,13 +57,22 @@
 
 	$: chipErrors = validate ? values.map((v) => validate!(v)) : values.map(() => null);
 	$: hasInvalid = chipErrors.some((e) => e !== null);
+
+	// Colour a chip by what it references, so users/groups/tags are told apart
+	// at a glance (they used to be all grey).
+	function chipType(v: string): string {
+		if (v.startsWith('group:')) return 'badge-success'; // green — group of users
+		if (v.startsWith('tag:')) return 'badge-warning'; // amber — device tag
+		if (v === '*' || v.startsWith('*:') || v.startsWith('autogroup:')) return 'badge-ghost'; // special
+		return 'badge-info'; // blue — a user (name@)
+	}
 </script>
 
 <div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 input input-bordered min-h-10 h-auto" class:input-error={hasInvalid}>
 	{#each values as v, i}
 		{@const err = chipErrors[i]}
 		<span
-			class="badge gap-1 font-mono text-xs {err ? 'badge-error' : 'badge-neutral'}"
+			class="badge gap-1 font-mono text-xs {err ? 'badge-error' : chipType(v)}"
 			title={err ?? ''}
 		>
 			{v}
