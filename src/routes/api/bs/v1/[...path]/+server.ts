@@ -84,6 +84,16 @@ async function isReservedNode(id: string): Promise<boolean> {
 async function proxy(method: string, path: string, request: Request, cookies: Parameters<RequestHandler>[0]['cookies'], url: URL) {
 	guard(cookies);
 
+	// Never let the catch-all climb out of the backend's /api/v1/ prefix (a
+	// `..`/`%2e` segment would normalize away and reach /metrics, /debug, etc.
+	// with the admin key attached).
+	if (path.includes('..') || /%2[ef]/i.test(path)) {
+		return new Response(JSON.stringify({ message: 'invalid path' }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+
 	// Refuse to delete the reserved `_panel` user or its `panel` device —
 	// tailscaled state in /var/lib/tailscale would orphan otherwise.
 	if (method === 'DELETE') {

@@ -1,18 +1,38 @@
 <script lang="ts">
+	import { get } from 'svelte/store';
 	import { t } from '$lib/i18n';
-	import { type AclAction, type AclPolicy, type AclRule, emptyPolicy, parsePolicy, serializePolicy } from '$lib/acl';
+	import {
+		type AclAction,
+		type AclPolicy,
+		type AclRule,
+		emptyPolicy,
+		parsePolicy,
+		serializePolicy,
+		policyHasAdvanced,
+		advancedKeys
+	} from '$lib/acl';
 	import ChipInput from './ChipInput.svelte';
 
 	export let value = '';
 	export let users: string[] = [];
 	export let onChange: (v: string) => void = () => {};
 
+	// Translate helper usable inside plain functions (validators/presets).
+	const tr = (k: string, p?: Record<string, string | number>) => get(t)(k, p);
+
 	type Tab = 'visual' | 'json';
 	let tab: Tab = 'visual';
+	let showHelp = false;
 
 	let policy: AclPolicy = emptyPolicy();
 	let parseError = '';
 	let lastSyncedFromValue = '';
+
+	// Stable per-rule keys so reordering/removing a rule doesn't scramble the
+	// (component-local) half-typed text of the ChipInputs. They travel WITH the
+	// rule through add/remove/move, and reset when the policy is loaded anew.
+	let uidSeq = 0;
+	let ruleKeys: number[] = [];
 
 	$: syncFromValue(value);
 
@@ -21,6 +41,7 @@
 		lastSyncedFromValue = v;
 		try {
 			policy = parsePolicy(v);
+			ruleKeys = policy.acls.map(() => ++uidSeq);
 			parseError = '';
 		} catch (e: unknown) {
 			parseError = e instanceof Error ? e.message : 'erro';
@@ -36,11 +57,17 @@
 
 	// ─── Groups ─────────────────────────────────────────────────────────────────
 	let newGroupName = '';
+	let groupError = '';
 
 	function addGroup() {
-		const name = newGroupName.trim();
-		if (!name) return;
-		const key = name.startsWith('group:') ? name : `group:${name}`;
+		const raw = newGroupName.trim();
+		if (!raw) return;
+		const key = raw.startsWith('group:') ? raw : `group:${raw}`;
+		if (!GROUP_RE.test(key)) {
+			groupError = tr('settings.acl.err.groupName');
+			return;
+		}
+		groupError = '';
 		if (policy.groups[key]) {
 			newGroupName = '';
 			return;
@@ -63,11 +90,17 @@
 
 	// ─── Tag owners ─────────────────────────────────────────────────────────────
 	let newTagName = '';
+	let tagError = '';
 
 	function addTag() {
-		const name = newTagName.trim();
-		if (!name) return;
-		const key = name.startsWith('tag:') ? name : `tag:${name}`;
+		const raw = newTagName.trim();
+		if (!raw) return;
+		const key = raw.startsWith('tag:') ? raw : `tag:${raw}`;
+		if (!TAG_RE.test(key)) {
+			tagError = tr('settings.acl.err.tagName');
+			return;
+		}
+		tagError = '';
 		if (policy.tagOwners[key]) {
 			newTagName = '';
 			return;
@@ -91,11 +124,13 @@
 	// ─── ACL rules ──────────────────────────────────────────────────────────────
 	function addRule() {
 		policy.acls = [...policy.acls, { action: 'accept', src: [], dst: [] }];
+		ruleKeys = [...ruleKeys, ++uidSeq];
 		commit();
 	}
 
 	function removeRule(idx: number) {
 		policy.acls = policy.acls.filter((_, i) => i !== idx);
+		ruleKeys = ruleKeys.filter((_, i) => i !== idx);
 		commit();
 	}
 
@@ -104,42 +139,87 @@
 		commit();
 	}
 
-	function setRuleAction(idx: number, value: string) {
-		const action: AclAction = value === 'drop' ? 'drop' : 'accept';
+	function moveRule(idx: number, dir: -1 | 1) {
+		const j = idx + dir;
+		if (j < 0 || j >= policy.acls.length) return;
+		const next = [...policy.acls];
+		[next[idx], next[j]] = [next[j], next[idx]];
+		policy.acls = next;
+		const keys = [...ruleKeys];
+		[keys[idx], keys[j]] = [keys[j], keys[idx]];
+		ruleKeys = keys;
+		commit();
+	}
+
+	function setRuleAction(idx: number, val: string) {
+		const action: AclAction = val === 'drop' ? 'drop' : 'accept';
 		updateRule(idx, { action });
 	}
 
-	// Suggestions for src/dst: users, groups, tags, *.
+	// ─── Quick examples (non-destructive: they append, never overwrite) ──────────
+	function ensureGroup(key: string) {
+		if (!policy.groups[key]) policy.groups = { ...policy.groups, [key]: [] };
+	}
+	function ensureTag(key: string) {
+		if (!policy.tagOwners[key]) policy.tagOwners = { ...policy.tagOwners, [key]: [] };
+	}
+	function addRuleIfAbsent(src: string[], dst: string[]) {
+		const key = JSON.stringify([src, dst]);
+		if (!policy.acls.some((r) => JSON.stringify([r.src, r.dst]) === key)) {
+			policy.acls = [...policy.acls, { action: 'accept', src, dst }];
+			ruleKeys = [...ruleKeys, ++uidSeq];
+		}
+	}
+	function exFamily() {
+		ensureGroup('group:familia');
+		addRuleIfAbsent(['group:familia'], ['group:familia:*']);
+		commit();
+	}
+	function exAllowAll() {
+		addRuleIfAbsent(['*'], ['*:*']);
+		commit();
+	}
+	function exSupportTag() {
+		ensureGroup('group:suporte');
+		ensureTag('tag:suporte-acesso');
+		addRuleIfAbsent(['group:suporte'], ['tag:suporte-acesso:*']);
+		commit();
+	}
+
+	// Suggestions for src/dst — MUST be the forms the validators accept.
 	$: srcSuggestions = [
 		'*',
 		...users,
 		...Object.keys(policy.groups),
-		...Object.keys(policy.tagOwners)
+		...Object.keys(policy.tagOwners),
+		'autogroup:member',
+		'autogroup:tagged'
 	];
 	$: dstSuggestions = [
 		'*:*',
 		...users.map((u) => `${u}:*`),
 		...Object.keys(policy.groups).map((g) => `${g}:*`),
-		...Object.keys(policy.tagOwners).map((tg) => `${tg}:*`)
+		...Object.keys(policy.tagOwners).map((tg) => `${tg}:*`),
+		'autogroup:self:*',
+		'autogroup:internet:*'
 	];
-	$: groupMemberSuggestions = users;
-	$: tagOwnerSuggestions = users;
+	$: memberSuggestions = users;
 
 	// ─── Validators ─────────────────────────────────────────────────────────────
-	// Headscale expects bare `username@` (trailing @, no domain). The form
-	// "@username" and "user@bigscale.net" both fail policy validation server-side
-	// without a clear error in the panel, so we catch them here.
-	const USER_RE = /^[a-z0-9][a-z0-9_-]*@$/i;
-	const GROUP_RE = /^group:[a-z0-9][a-z0-9_-]*$/i;
-	const TAG_RE = /^tag:[a-z0-9][a-z0-9_-]*$/i;
-	const AUTOGROUP_RE = /^autogroup:(internet|self|members|tagged)$/i;
+	// Headscale expects bare `username@` (trailing @, no domain). No `i` flag —
+	// names are case-sensitive lowercase, so `Alice@`/`group:Eng` must fail here,
+	// not only server-side.
+	const USER_RE = /^[a-z0-9][a-z0-9_-]*@$/;
+	const GROUP_RE = /^group:[a-z0-9][a-z0-9_-]*$/;
+	const TAG_RE = /^tag:[a-z0-9][a-z0-9_-]*$/;
+	const AUTOGROUP_RE = /^autogroup:(internet|self|member|members|tagged|nonroot)$/;
 
 	function userHint(v: string): string | null {
-		if (v.startsWith('@')) return `use "${v.slice(1)}@" (trailing @, not leading)`;
+		if (v.startsWith('@')) return tr('settings.acl.err.userLeadingAt', { v: `${v.slice(1)}@` });
 		const at = v.indexOf('@');
-		if (at === -1) return `missing trailing @ — try "${v}@"`;
-		if (at !== v.length - 1) return `drop the part after @ — try "${v.slice(0, at)}@"`;
-		if (!USER_RE.test(v)) return 'invalid username (use letters, digits, _ or -)';
+		if (at === -1) return tr('settings.acl.err.userNoAt', { v: `${v}@` });
+		if (at !== v.length - 1) return tr('settings.acl.err.userDomain', { v: `${v.slice(0, at)}@` });
+		if (!USER_RE.test(v)) return tr('settings.acl.err.userChars');
 		return null;
 	}
 
@@ -148,45 +228,55 @@
 	}
 
 	function validateTagOwner(v: string): string | null {
-		if (v.startsWith('group:')) {
-			return GROUP_RE.test(v) ? null : 'invalid group name';
-		}
+		if (v.startsWith('group:')) return GROUP_RE.test(v) ? null : tr('settings.acl.err.groupRef');
 		return userHint(v);
 	}
 
 	function validateAclRef(v: string): string | null {
 		if (v === '*') return null;
-		if (v.startsWith('group:')) return GROUP_RE.test(v) ? null : 'invalid group name';
-		if (v.startsWith('tag:')) return TAG_RE.test(v) ? null : 'invalid tag name';
-		if (v.startsWith('autogroup:'))
-			return AUTOGROUP_RE.test(v) ? null : 'unknown autogroup (internet|self|members|tagged)';
+		if (v.startsWith('group:')) return GROUP_RE.test(v) ? null : tr('settings.acl.err.groupRef');
+		if (v.startsWith('tag:')) return TAG_RE.test(v) ? null : tr('settings.acl.err.tagRef');
+		if (v.startsWith('autogroup:')) return AUTOGROUP_RE.test(v) ? null : tr('settings.acl.err.autogroup');
 		return userHint(v);
 	}
 
+	function validatePort(port: string): boolean {
+		return port.split(',').every((raw) => {
+			const p = raw.trim();
+			if (p === '*') return true;
+			const m = p.match(/^(\d+)(?:-(\d+))?$/);
+			if (!m) return false;
+			const lo = +m[1];
+			const hi = m[2] ? +m[2] : lo;
+			return lo >= 1 && hi <= 65535 && lo <= hi;
+		});
+	}
+
 	function validateAclDst(v: string): string | null {
-		// dst entries are "<ref>:<port>" — split, validate the ref, then sanity-check the port.
+		// A bare ref with no ":port" (e.g. "group:eng", "alice@", "*") — clearer message.
+		if (validateAclRef(v) === null) return tr('settings.acl.err.missingPort');
 		const colon = v.lastIndexOf(':');
-		if (colon === -1) return 'missing ":port" suffix (use ":*" for any port)';
-		const ref = v.slice(0, colon);
-		const port = v.slice(colon + 1);
-		const refErr = validateAclRef(ref);
+		if (colon === -1) return tr('settings.acl.err.missingPort');
+		const refErr = validateAclRef(v.slice(0, colon));
 		if (refErr) return refErr;
-		if (port === '*' || /^\d+(-\d+)?$/.test(port)) return null;
-		return 'invalid port (use "*", a number, or a range like "80-90")';
+		return validatePort(v.slice(colon + 1)) ? null : tr('settings.acl.err.port');
 	}
 
 	// ─── JSON tab ───────────────────────────────────────────────────────────────
 	let jsonText = '';
 	let jsonError = '';
+	let jsonLoadedFrom = '';
 
-	$: if (tab === 'json') {
+	$: if (tab === 'json' && value !== jsonLoadedFrom) {
 		jsonText = value;
+		jsonLoadedFrom = value;
 	}
 
 	function applyJson() {
 		try {
 			const parsed = parsePolicy(jsonText);
 			policy = parsed;
+			ruleKeys = policy.acls.map(() => ++uidSeq);
 			parseError = '';
 			lastSyncedFromValue = jsonText;
 			value = jsonText;
@@ -199,24 +289,29 @@
 </script>
 
 <!-- Tabs -->
-<div role="tablist" class="tabs tabs-boxed bg-base-200 self-start">
-	<button
-		role="tab"
-		type="button"
-		class="tab {tab === 'visual' ? 'tab-active' : ''}"
-		on:click={() => (tab = 'visual')}
-	>
-		{$t('settings.acl.tab.visual')}
-	</button>
-	<button
-		role="tab"
-		type="button"
-		class="tab {tab === 'json' ? 'tab-active' : ''}"
-		on:click={() => (tab = 'json')}
-	>
-		{$t('settings.acl.tab.json')}
+<div class="flex items-center justify-between gap-2 flex-wrap">
+	<div role="tablist" class="tabs tabs-boxed bg-base-200 self-start">
+		<button role="tab" type="button" class="tab {tab === 'visual' ? 'tab-active' : ''}" on:click={() => (tab = 'visual')}>
+			{$t('settings.acl.tab.visual')}
+		</button>
+		<button role="tab" type="button" class="tab {tab === 'json' ? 'tab-active' : ''}" on:click={() => (tab = 'json')}>
+			{$t('settings.acl.tab.json')}
+		</button>
+	</div>
+	<button type="button" class="btn btn-ghost btn-xs" on:click={() => (showHelp = !showHelp)}>
+		{showHelp ? '▾' : '▸'} {$t('settings.acl.help.title')}
 	</button>
 </div>
+
+<!-- Help / explainer -->
+{#if showHelp}
+	<div class="rounded-lg bg-base-200 p-3 text-sm space-y-1.5">
+		<p><span class="font-semibold">{$t('settings.acl.groups.title')}:</span> {$t('settings.acl.help.groups')}</p>
+		<p><span class="font-semibold">{$t('settings.acl.tags.title')}:</span> {$t('settings.acl.help.tags')}</p>
+		<p><span class="font-semibold">{$t('settings.acl.rules.title')}:</span> {$t('settings.acl.help.rules')}</p>
+		<p class="text-base-content/60 text-xs pt-1">{$t('settings.acl.help.format')}</p>
+	</div>
+{/if}
 
 {#if tab === 'visual'}
 	{#if parseError}
@@ -224,6 +319,29 @@
 			<span>{$t('settings.acl.parseError')}: {parseError}</span>
 		</div>
 	{/if}
+
+	{#if policyHasAdvanced(policy)}
+		<div class="alert alert-info text-sm">
+			<span>{$t('settings.acl.advancedWarn', { keys: advancedKeys(policy).join(', ') || 'proto' })}</span>
+		</div>
+	{/if}
+
+	<!-- Quick examples -->
+	<div class="rounded-lg border border-base-200 p-3 space-y-2">
+		<p class="text-sm font-medium">{$t('settings.acl.ex.title')}</p>
+		<div class="flex flex-wrap gap-2">
+			<button type="button" class="btn btn-sm btn-outline" title={$t('settings.acl.ex.familyDesc')} on:click={exFamily}>
+				{$t('settings.acl.ex.family')}
+			</button>
+			<button type="button" class="btn btn-sm btn-outline" title={$t('settings.acl.ex.supportDesc')} on:click={exSupportTag}>
+				{$t('settings.acl.ex.support')}
+			</button>
+			<button type="button" class="btn btn-sm btn-outline" title={$t('settings.acl.ex.allowAllDesc')} on:click={exAllowAll}>
+				{$t('settings.acl.ex.allowAll')}
+			</button>
+		</div>
+		<p class="text-xs text-base-content/50">{$t('settings.acl.ex.hint')}</p>
+	</div>
 
 	<!-- Groups -->
 	<section class="space-y-3">
@@ -243,7 +361,7 @@
 				<ChipInput
 					values={members}
 					placeholder={$t('settings.acl.groups.memberPh')}
-					suggestions={groupMemberSuggestions}
+					suggestions={memberSuggestions}
 					validate={validateGroupMember}
 					onChange={(next) => setGroupMembers(key, next)}
 				/>
@@ -262,6 +380,7 @@
 				+ {$t('settings.acl.groups.add')}
 			</button>
 		</div>
+		{#if groupError}<p class="text-xs text-error">{groupError}</p>{/if}
 	</section>
 
 	<div class="divider my-1"></div>
@@ -284,7 +403,7 @@
 				<ChipInput
 					values={owners}
 					placeholder={$t('settings.acl.tags.ownerPh')}
-					suggestions={tagOwnerSuggestions}
+					suggestions={memberSuggestions}
 					validate={validateTagOwner}
 					onChange={(next) => setTagOwners(key, next)}
 				/>
@@ -303,6 +422,7 @@
 				+ {$t('settings.acl.tags.add')}
 			</button>
 		</div>
+		{#if tagError}<p class="text-xs text-error">{tagError}</p>{/if}
 	</section>
 
 	<div class="divider my-1"></div>
@@ -314,7 +434,7 @@
 			<p class="text-xs text-base-content/50">{$t('settings.acl.rules.hint')}</p>
 		</div>
 
-		{#each policy.acls as rule, idx (idx)}
+		{#each policy.acls as rule, idx (ruleKeys[idx] ?? idx)}
 			<div class="border border-base-200 rounded-lg p-3 space-y-3">
 				<div class="flex items-center gap-2 flex-wrap">
 					<span class="text-xs text-base-content/50 font-medium">#{idx + 1}</span>
@@ -326,18 +446,19 @@
 						<option value="accept">{$t('settings.acl.rules.accept')}</option>
 						<option value="drop">{$t('settings.acl.rules.drop')}</option>
 					</select>
-					<button
-						class="btn btn-ghost btn-xs text-error ml-auto"
-						on:click={() => removeRule(idx)}
-						type="button"
-					>
-						{$t('common.remove')}
-					</button>
+					<span class="text-xs text-base-content/50">{$t('settings.acl.rules.that')}</span>
+					<div class="ml-auto flex items-center gap-1">
+						<button class="btn btn-ghost btn-xs" title={$t('settings.acl.rules.moveUp')} on:click={() => moveRule(idx, -1)} type="button" disabled={idx === 0}>↑</button>
+						<button class="btn btn-ghost btn-xs" title={$t('settings.acl.rules.moveDown')} on:click={() => moveRule(idx, 1)} type="button" disabled={idx === policy.acls.length - 1}>↓</button>
+						<button class="btn btn-ghost btn-xs text-error" on:click={() => removeRule(idx)} type="button">
+							{$t('common.remove')}
+						</button>
+					</div>
 				</div>
 
 				<div>
 					<div class="label py-1">
-						<span class="label-text text-xs font-medium">{$t('settings.acl.rules.src')}</span>
+						<span class="label-text text-xs font-medium">{$t('settings.acl.rules.who')}</span>
 					</div>
 					<ChipInput
 						values={rule.src}
@@ -350,7 +471,7 @@
 
 				<div>
 					<div class="label py-1">
-						<span class="label-text text-xs font-medium">{$t('settings.acl.rules.dst')}</span>
+						<span class="label-text text-xs font-medium">{$t('settings.acl.rules.reaches')}</span>
 					</div>
 					<ChipInput
 						values={rule.dst}

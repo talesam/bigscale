@@ -1,14 +1,16 @@
 <script lang="ts">
+	/** A suggestion is either a bare value or a {label, value} pair (label shown, value inserted). */
+	type Suggestion = string | { label: string; value: string };
+
 	export let values: string[] = [];
 	export let placeholder = '';
-	export let suggestions: string[] = [];
+	export let suggestions: Suggestion[] = [];
 	export let onChange: (next: string[]) => void = () => {};
 	/** Optional validator. Return null when valid, or an error message to flag the chip. */
 	export let validate: ((v: string) => string | null) | undefined = undefined;
 
 	let input = '';
 	let inputEl: HTMLInputElement;
-	let inputError = '';
 
 	$: liveError = validate && input.trim() ? validate(input.trim()) : null;
 
@@ -17,14 +19,12 @@
 		if (!trimmed) return;
 		if (values.includes(trimmed)) {
 			input = '';
-			inputError = '';
 			return;
 		}
-		// Allow adding even when invalid — flag visually so the user notices,
+		// Allow adding even when invalid — flagged visually so the user notices,
 		// but don't silently drop their input.
 		onChange([...values, trimmed]);
 		input = '';
-		inputError = '';
 	}
 
 	function remove(idx: number) {
@@ -44,8 +44,15 @@
 		if (input.trim()) add(input);
 	}
 
+	function norm(s: Suggestion): { label: string; value: string } {
+		return typeof s === 'string' ? { label: s, value: s } : s;
+	}
+
 	$: filteredSuggestions = input
-		? suggestions.filter((s) => s.toLowerCase().includes(input.toLowerCase()) && !values.includes(s)).slice(0, 6)
+		? suggestions
+			.map(norm)
+			.filter((s) => s.value.toLowerCase().includes(input.toLowerCase()) && !values.includes(s.value))
+			.slice(0, 8)
 		: [];
 
 	$: chipErrors = validate ? values.map((v) => validate!(v)) : values.map(() => null);
@@ -89,15 +96,18 @@
 {#if filteredSuggestions.length}
 	<div class="mt-1 flex flex-wrap gap-1">
 		{#each filteredSuggestions as s}
+			<!-- mousedown|preventDefault: keep focus on the input so its blur doesn't
+			     commit the half-typed text before this click selects the suggestion. -->
 			<button
 				type="button"
 				class="btn btn-ghost btn-xs font-mono"
-				on:click={() => {
-					add(s);
+				title={s.value}
+				on:mousedown|preventDefault={() => {
+					add(s.value);
 					inputEl?.focus();
 				}}
 			>
-				+ {s}
+				+ {s.label}
 			</button>
 		{/each}
 	</div>

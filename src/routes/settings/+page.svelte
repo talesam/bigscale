@@ -53,18 +53,26 @@
 	onMount(() => {
 		const d = new Date();
 		d.setFullYear(d.getFullYear() + 1);
-		newKeyExpiry = d.toISOString().slice(0, 16);
+		newKeyExpiry = toLocalInput(d);
 		loadApiKeys();
 		loadPolicy();
 		loadHealth();
 		loadUserSuggestions();
 	});
 
+	// datetime-local expects a LOCAL "YYYY-MM-DDTHH:mm" — toISOString() returns
+	// UTC, which the picker would then read back as local time (off by the tz offset).
+	function toLocalInput(d: Date): string {
+		const p = (n: number) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+	}
+
 	async function loadUserSuggestions() {
 		try {
 			const users = await getUsers();
-			// Headscale requires the user@base_domain format — suggest both forms.
-			userSuggestions = users.flatMap((u) => [`${u.name}@bigscale.net`, u.name]);
+			// Headscale ACL refs use the bare `username@` form (trailing @, no domain) —
+			// suggest exactly what the validators accept.
+			userSuggestions = users.map((u) => `${u.name}@`);
 		} catch {
 			userSuggestions = [];
 		}
@@ -120,7 +128,7 @@
 			}
 			policyDirty = false;
 		} catch (e: unknown) {
-			policyError = e instanceof Error ? e.message : 'erro';
+			policyError = e instanceof Error ? e.message : $t('common.error');
 		} finally {
 			policyLoading = false;
 		}
@@ -135,7 +143,7 @@
 			policyDirty = false;
 			addToast($t('settings.acl.saved'));
 		} catch (e: unknown) {
-			policyError = e instanceof Error ? e.message : 'erro';
+			policyError = e instanceof Error ? e.message : $t('common.error');
 			addToast(policyError, 'error');
 		} finally {
 			policySaving = false;
@@ -143,6 +151,8 @@
 	}
 
 	function loadAclTemplate() {
+		// Overwrites the whole policy — confirm so it can't silently wipe existing rules.
+		if (policyText.trim() && !confirm($t('settings.acl.templateConfirm'))) return;
 		policyText = ACL_TEMPLATE_EXAMPLE;
 		policyDirty = true;
 	}

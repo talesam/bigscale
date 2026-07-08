@@ -28,6 +28,10 @@
 				return;
 			}
 			await goto('/devices', { invalidateAll: true });
+		} catch (e: unknown) {
+			// Network/TLS failure — without this the rejection is swallowed and the
+			// button just re-enables with no message.
+			error = e instanceof Error ? e.message : $t('changePassword.errors.failed');
 		} finally {
 			loading = false;
 		}

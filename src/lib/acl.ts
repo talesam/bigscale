@@ -7,16 +7,35 @@ export interface AclRule {
 	action: AclAction;
 	src: string[];
 	dst: string[];
+	// Per-rule keys we don't model in the visual editor (e.g. "proto"). Kept
+	// verbatim so a visual edit never silently strips them.
+	_extra?: Record<string, unknown>;
 }
 
 export interface AclPolicy {
 	groups: Record<string, string[]>;
 	tagOwners: Record<string, string[]>;
 	acls: AclRule[];
+	// Top-level keys we don't model (hosts, ssh, autoApprovers, postures,
+	// derpMap, tests, …). Preserved so editing groups/rules in the visual tab
+	// doesn't wipe advanced sections of a production policy.
+	_extra?: Record<string, unknown>;
 }
 
 export function emptyPolicy(): AclPolicy {
 	return { groups: {}, tagOwners: {}, acls: [] };
+}
+
+function strArr(v: unknown): string[] {
+	return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+}
+
+function strArrMap(v: unknown): Record<string, string[]> {
+	const out: Record<string, string[]> = {};
+	if (v && typeof v === 'object') {
+		for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = strArr(val);
+	}
+	return out;
 }
 
 // Strip // and /* */ comments and trailing commas, leaving valid JSON.
@@ -80,37 +99,54 @@ export function parsePolicy(text: string): AclPolicy {
 	if (!trimmed) return emptyPolicy();
 
 	const json = stripHuJson(trimmed);
-	const raw = JSON.parse(json) as Partial<{
-		groups: Record<string, string[]>;
-		tagOwners: Record<string, string[]>;
-		acls: Array<{ action?: string; src?: string[]; dst?: string[] }>;
-	}>;
+	const raw = JSON.parse(json) as Record<string, unknown>;
 
-	const groups: Record<string, string[]> = {};
-	for (const [k, v] of Object.entries(raw.groups ?? {})) {
-		groups[k] = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-	}
+	const groups = strArrMap(raw.groups);
+	const tagOwners = strArrMap(raw.tagOwners);
 
-	const tagOwners: Record<string, string[]> = {};
-	for (const [k, v] of Object.entries(raw.tagOwners ?? {})) {
-		tagOwners[k] = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-	}
+	const rawAcls = Array.isArray(raw.acls) ? raw.acls : [];
+	const acls: AclRule[] = rawAcls.map((r) => {
+		const rule = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>;
+		const { action, src, dst, ...rest } = rule;
+		const out: AclRule = {
+			action: action === 'drop' ? 'drop' : 'accept',
+			src: strArr(src),
+			dst: strArr(dst)
+		};
+		if (Object.keys(rest).length) out._extra = rest;
+		return out;
+	});
 
-	const acls: AclRule[] = (raw.acls ?? []).map((r) => ({
-		action: r.action === 'drop' ? 'drop' : 'accept',
-		src: Array.isArray(r.src) ? r.src.filter((x): x is string => typeof x === 'string') : [],
-		dst: Array.isArray(r.dst) ? r.dst.filter((x): x is string => typeof x === 'string') : []
-	}));
-
-	return { groups, tagOwners, acls };
+	// Everything we don't model (hosts, ssh, autoApprovers, …) is kept verbatim.
+	const { groups: _g, tagOwners: _t, acls: _a, ...extra } = raw;
+	const policy: AclPolicy = { groups, tagOwners, acls };
+	if (Object.keys(extra).length) policy._extra = extra;
+	return policy;
 }
 
 export function serializePolicy(p: AclPolicy): string {
-	// Only emit non-empty keys to keep the JSON lean.
 	const out: Record<string, unknown> = {};
 	if (Object.keys(p.groups).length) out.groups = p.groups;
 	if (Object.keys(p.tagOwners).length) out.tagOwners = p.tagOwners;
-	out.acls = p.acls;
+	// Merge back unmodeled top-level keys (hosts, ssh, autoApprovers, …) so they
+	// survive a visual-tab round-trip.
+	if (p._extra) for (const [k, v] of Object.entries(p._extra)) out[k] = v;
+	// acls last; re-attach any per-rule extras (proto, …).
+	out.acls = p.acls.map((r) => ({ action: r.action, src: r.src, dst: r.dst, ...(r._extra ?? {}) }));
 	return JSON.stringify(out, null, 2);
 }
 
+/**
+ * True when the policy carries sections the visual editor doesn't model
+ * (hosts, ssh, autoApprovers, per-rule proto, …). The editor uses this to warn
+ * that those parts are only editable in the JSON tab (they ARE preserved).
+ */
+export function policyHasAdvanced(p: AclPolicy): boolean {
+	if (p._extra && Object.keys(p._extra).length) return true;
+	return p.acls.some((r) => r._extra && Object.keys(r._extra).length);
+}
+
+/** List of the unmodeled top-level section names, for a friendly warning. */
+export function advancedKeys(p: AclPolicy): string[] {
+	return p._extra ? Object.keys(p._extra) : [];
+}
