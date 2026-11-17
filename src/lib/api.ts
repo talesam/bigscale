@@ -213,6 +213,32 @@ export async function getHealth(): Promise<HealthResponse> {
 	}
 }
 
+// ─── Accounts without devices ─────────────────────────────────────────────────
+
+export async function getEmptyAccounts(): Promise<string[]> {
+	return (await accountsReq<{ users: string[] }>('GET')).users;
+}
+
+export async function removeEmptyAccounts(users: string[]): Promise<{ removed: string[]; failed: string[] }> {
+	return accountsReq('POST', { users });
+}
+
+async function accountsReq<T>(method: string, body?: unknown): Promise<T> {
+	const res = await fetch('/api/accounts/empty', {
+		method,
+		headers: { 'Content-Type': 'application/json' },
+		credentials: 'include',
+		body: body !== undefined ? JSON.stringify(body) : undefined
+	});
+	if (res.status === 401) {
+		location.href = '/login';
+		throw new Error('Session expired');
+	}
+	const data = (await res.json().catch(() => ({}))) as T & { error?: string; message?: string };
+	if (!res.ok) throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
+	return data;
+}
+
 // ─── Invites ──────────────────────────────────────────────────────────────────
 
 async function invitesReq<T>(method: string, path: string, body?: unknown): Promise<T> {

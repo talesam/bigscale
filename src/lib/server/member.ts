@@ -22,3 +22,20 @@ export async function callerMember(request: Request, getClientAddress: () => str
 	if (!node || !user || NOT_PEOPLE.has(user)) return null;
 	return { user, userId: String(node.user.id), device: node.givenName || node.name };
 }
+
+/** The calling member plus the id of the device the call came from. */
+export async function callerDevice(
+	request: Request,
+	getClientAddress: () => string
+): Promise<(Inviter & { nodeId: string }) | null> {
+	const me = await callerMember(request, getClientAddress);
+	if (!me) return null;
+	let ip: string;
+	try {
+		ip = getClientAddress();
+	} catch {
+		return null;
+	}
+	const node = await getNodeByTailnetIp(ip);
+	return node ? { ...me, nodeId: String(node.id) } : null;
+}

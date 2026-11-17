@@ -164,22 +164,33 @@ export function addPair(a: string, b: string): Promise<() => Promise<void>> {
 }
 
 /**
- * Drop the pair rules invites created for `user` (when the admin deletes that
- * user). Admin-written rules are left alone, even if they mention the user.
+ * Forget a deleted user in the policy: drop the pair rules invites created
+ * for them and take them out of every group. Other admin-written rules that
+ * mention the user are left alone (the admin wrote them on purpose) — but
+ * group membership goes, or the next person given that name would inherit it.
  */
-export function removePairsOf(user: string): Promise<void> {
+export function removeUserFromPolicy(user: string): Promise<void> {
 	return serialized(async () => {
 		const { policy, empty } = await readPolicy();
 		if (empty) return;
 		const mine = `${user}@`;
+		let changed = false;
 		const kept = policy.acls.filter((r) => {
 			if (r.action !== 'accept' || r._extra || r.src.length !== 2 || !r.src.includes(mine)) return true;
 			const other = r.src.find((s) => s !== mine)?.slice(0, -1) ?? '';
 			return !isPairRule(r, user, other);
 		});
-		if (kept.length === policy.acls.length) return;
-		policy.acls = kept;
-		await writePolicy(policy);
+		if (kept.length !== policy.acls.length) {
+			policy.acls = kept;
+			changed = true;
+		}
+		for (const [key, members] of Object.entries(policy.groups)) {
+			if (key.startsWith('group:') && members.includes(mine)) {
+				policy.groups[key] = members.filter((m) => m !== mine);
+				changed = true;
+			}
+		}
+		if (changed) await writePolicy(policy);
 	});
 }
 

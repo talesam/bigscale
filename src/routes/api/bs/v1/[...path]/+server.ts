@@ -2,8 +2,8 @@ import { error } from '@sveltejs/kit';
 import { validateSession } from '$lib/server/session.js';
 import { bs } from '$lib/server/bigscale-server.js';
 import { deleteDeviceMeta, getAllDeviceMeta } from '$lib/server/device-meta.js';
-import { readPolicyRaw, removePairsOf, withPanelRule, withPolicyLock } from '$lib/server/policy-groups.js';
-import { revokeInvitesBy } from '$lib/server/invite-store.js';
+import { readPolicyRaw, withPanelRule, withPolicyLock } from '$lib/server/policy-groups.js';
+import { afterUserDeleted, onNodeGone } from '$lib/server/accounts.js';
 import type { RequestHandler } from './$types';
 
 // Path looks like `node/<id>` (no trailing segments) — admin deleted the
@@ -78,14 +78,14 @@ async function userName(id: string): Promise<string | null> {
 async function isReservedUser(id: string): Promise<boolean> {
 	return (await userName(id)) === RESERVED_USER;
 }
-async function isReservedNode(id: string): Promise<boolean> {
+async function nodeOwner(id: string): Promise<string | null> {
 	try {
 		const res = await bs('GET', `node/${id}`);
-		if (!res.ok) return false;
+		if (!res.ok) return null;
 		const body = (await res.json()) as { node?: { user?: { name?: string } } };
-		return body.node?.user?.name === RESERVED_USER;
+		return body.node?.user?.name ?? null;
 	} catch {
-		return false;
+		return null;
 	}
 }
 
@@ -105,6 +105,7 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 	// Refuse to delete the reserved `_panel` user or its `panel` device —
 	// tailscaled state in /var/lib/tailscale would orphan otherwise.
 	let deletedUser: string | null = null;
+	let deletedNodeOwner: string | null = null;
 	if (method === 'DELETE') {
 		const u = USER_DELETE_RE.exec(path);
 		if (u) deletedUser = await userName(u[1]);
@@ -116,7 +117,8 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 			});
 		}
 		const nodeMatch = NODE_DELETE_RE.exec(path);
-		if (nodeMatch && (await isReservedNode(nodeMatch[1]))) {
+		if (nodeMatch) deletedNodeOwner = await nodeOwner(nodeMatch[1]);
+		if (nodeMatch && deletedNodeOwner === RESERVED_USER) {
 			return new Response(JSON.stringify({ message: 'reserved system node cannot be deleted' }), {
 				status: 403,
 				headers: { 'Content-Type': 'application/json' }
@@ -170,14 +172,12 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 	if (method === 'DELETE' && res.ok) {
 		const m = NODE_DELETE_RE.exec(path);
 		if (m) deleteDeviceMeta(m[1]);
-		// A removed person loses what invites gave them and their pending
-		// invites die (they'd fail on redeem anyway; this makes it visible).
-		if (deletedUser) {
-			revokeInvitesBy(deletedUser);
-			await removePairsOf(deletedUser).catch((e) =>
-				console.error('[bigscale] policy: could not drop invite rules of', deletedUser, (e as Error).message)
-			);
-		}
+		// A removed person loses what invites gave them (pair rules, groups)
+		// and their pending invites die; the name is free again.
+		if (deletedUser) await afterUserDeleted(deletedUser);
+		// An account an invite created, left without devices, goes too —
+		// otherwise its name stays taken by nobody.
+		if (m && deletedNodeOwner) await onNodeGone(deletedNodeOwner);
 	}
 
 	return new Response(data, {

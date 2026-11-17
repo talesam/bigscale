@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getUsers, createUser, renameUser, deleteUser, getPreAuthKeys, createPreAuthKey, expirePreAuthKey } from '$lib/api';
+	import { getUsers, createUser, renameUser, deleteUser, getPreAuthKeys, createPreAuthKey, expirePreAuthKey, getEmptyAccounts, removeEmptyAccounts } from '$lib/api';
 	import { addToast } from '$lib/stores';
 	import { t, locale } from '$lib/i18n';
 	import type { User, PreAuthKey } from '$lib/types';
@@ -36,6 +36,12 @@
 
 	let hideInactive = true;
 
+	// Users left without any device (people who reinstalled, signed out or
+	// were tests): their names stay taken until removed.
+	let emptyAccounts: string[] = [];
+	let showPurge = false;
+	let purgeLoading = false;
+
 	$: filtered = users.filter((u) => u.name.toLowerCase().includes(search.toLowerCase()));
 	$: countLabel = users.length === 1 ? $t('users.count.one', { n: users.length }) : $t('users.count.many', { n: users.length });
 
@@ -49,6 +55,22 @@
 			addToast(e instanceof Error ? e.message : $t('users.toast.loadError'), 'error');
 		} finally {
 			loading = false;
+		}
+		emptyAccounts = await getEmptyAccounts().catch(() => []);
+	}
+
+	async function doPurge() {
+		purgeLoading = true;
+		try {
+			const { removed, failed } = await removeEmptyAccounts(emptyAccounts);
+			addToast($t('users.orphans.removed', { n: removed.length }));
+			if (failed.length) addToast($t('users.orphans.failed', { names: failed.join(', ') }), 'error');
+			showPurge = false;
+			await load();
+		} catch (e: unknown) {
+			addToast(e instanceof Error ? e.message : $t('common.error'), 'error');
+		} finally {
+			purgeLoading = false;
 		}
 	}
 
@@ -200,6 +222,17 @@
 		</div>
 	</div>
 
+
+	{#if emptyAccounts.length}
+		<div role="status" class="alert alert-warning flex flex-col sm:flex-row items-start sm:items-center gap-3">
+			<div class="flex-1">
+				<p class="font-semibold">{$t('users.orphans.title', { n: emptyAccounts.length })}</p>
+				<p class="text-sm opacity-80">{$t('users.orphans.desc')}</p>
+				<p class="text-sm font-mono mt-1 break-words">{emptyAccounts.join(', ')}</p>
+			</div>
+			<button class="btn btn-sm" on:click={() => (showPurge = true)}>{$t('users.orphans.button')}</button>
+		</div>
+	{/if}
 	<!-- Search -->
 	<label class="input input-bordered flex items-center gap-2 w-full max-w-sm">
 		<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -362,6 +395,25 @@
 		</div>
 		<button class="modal-backdrop" on:click={() => (renameTarget = null)}></button>
 	</dialog>
+{/if}
+
+<!-- Remove accounts without devices -->
+{#if showPurge}
+	<div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="purge-title">
+		<div class="modal-box">
+			<h3 id="purge-title" class="font-bold text-lg mb-2">{$t('users.orphans.modalTitle')}</h3>
+			<p class="text-base-content/70 text-sm">{$t('users.orphans.modalDesc')}</p>
+			<p class="font-mono text-sm mt-3 break-words">{emptyAccounts.join(', ')}</p>
+			<div class="modal-action">
+				<button class="btn btn-ghost" on:click={() => (showPurge = false)} disabled={purgeLoading}>{$t('common.cancel')}</button>
+				<button class="btn btn-error" on:click={doPurge} disabled={purgeLoading}>
+					{#if purgeLoading}<span class="loading loading-spinner loading-sm"></span>{/if}
+					{$t('users.orphans.confirm', { n: emptyAccounts.length })}
+				</button>
+			</div>
+		</div>
+		<button class="modal-backdrop" aria-label={$t('common.cancel')} on:click={() => (showPurge = false)}></button>
+	</div>
 {/if}
 
 <!-- Delete user modal -->

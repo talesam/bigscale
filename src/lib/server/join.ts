@@ -2,6 +2,8 @@ import { BIGSCALE_PUBLIC_URL } from './config.js';
 import { createUser, deleteUser, displayNameFrom, mintKey, nameConflict, userIdOf, userNameFrom } from './enroll.js';
 import { lookup, recordUse, reserve, type LookupFailure } from './invite-store.js';
 import { addMember, addPair, groupsOf, referencedUsers } from './policy-groups.js';
+import { getAccount, reclaimMatches, recordAccount, rotateReclaim } from './account-store.js';
+import { deleteNode, nodesOf } from './accounts.js';
 
 // Redeeming an invite: the only unauthenticated write the panel offers. The
 // invite token *is* the credential, so everything here is about not letting
@@ -60,6 +62,8 @@ export interface JoinSuccess {
 	group: string | null;
 	/** Member who invited (the newcomer can reach their devices), if any. */
 	invited_by: string | null;
+	/** Secret for signing in again as this user later (see account-store). */
+	reclaim: string;
 }
 
 const STATUS: Record<LookupFailure, number> = { unknown: 404, expired: 410, used: 410, revoked: 410 };
@@ -129,13 +133,15 @@ export async function redeemInvite(
 		const authkey = await mintKey(userId);
 
 		recordUse(invite.id, user);
+		const reclaim = recordAccount(user, userId);
 		userId = null; // committed: nothing to roll back
 		return {
 			authkey,
 			server_url: BIGSCALE_PUBLIC_URL,
 			user,
 			group,
-			invited_by: inviter?.user ?? null
+			invited_by: inviter?.user ?? null,
+			reclaim
 		};
 	} catch (e) {
 		console.error('[join] redeem failed:', (e as Error).message);
@@ -149,6 +155,65 @@ export async function redeemInvite(
 			await deleteUser(userId).catch((e) => console.error('[join] undo user:', e));
 		}
 		release();
+	}
+}
+
+const SECRET_RE = /^[A-Za-z0-9_-]{40,64}$/;
+const HOST_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+export interface RejoinSuccess {
+	authkey: string;
+	server_url: string;
+	user: string;
+	reclaim: string;
+}
+
+/**
+ * Sign in again as an account an invite created, with the secret BigLace
+ * kept from that join — no invite, no new name. The secret is rotated on
+ * every use. With `hostname`, devices of that account using the same name
+ * are removed first, so the device gets its own name back instead of
+ * `name-xxxxxxxx` (same person, same machine, new install). Whether the old
+ * entry still shows "online" doesn't matter: a machine that vanished without
+ * closing its connection stays "online" for minutes, and only the account's
+ * owner (holder of the secret) can do this to the account's own devices.
+ */
+export async function rejoin(
+	client: string,
+	rawUser: unknown,
+	secret: unknown,
+	rawHost: unknown
+): Promise<JoinFailure | RejoinSuccess> {
+	if (typeof rawUser !== 'string' || typeof secret !== 'string' || !SECRET_RE.test(secret)) {
+		return { status: 400, error: 'invalid_request' };
+	}
+	const hostname = typeof rawHost === 'string' && HOST_RE.test(rawHost) ? rawHost : null;
+	if (throttled(client, Date.now())) return { status: 429, error: 'too_many_attempts' };
+	const user = rawUser.trim().toLowerCase();
+	const acc = getAccount(user);
+	if (!acc || !reclaimMatches(user, secret)) {
+		noteFailure(client, Date.now());
+		return { status: 403, error: 'revoked' };
+	}
+	try {
+		const id = await userIdOf(user);
+		// Gone (removed by the admin or the cleanup), or the name now belongs
+		// to a different account.
+		if (id === null || (acc.userId !== null && acc.userId !== id)) {
+			noteFailure(client, Date.now());
+			return { status: 410, error: 'revoked' };
+		}
+		if (hostname) {
+			for (const n of await nodesOf(user)) {
+				if (n.givenName === hostname || n.name === hostname) await deleteNode(n.id);
+			}
+		}
+		const authkey = await mintKey(id);
+		const reclaim = rotateReclaim(user, id);
+		return { authkey, server_url: BIGSCALE_PUBLIC_URL, user, reclaim };
+	} catch (e) {
+		console.error('[join] rejoin failed:', (e as Error).message);
+		return { status: 502, error: 'server_error' };
 	}
 }
 
