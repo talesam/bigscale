@@ -65,9 +65,10 @@ export interface Invite {
 	mutual: boolean;
 	note: string;
 	createdAt: string;
-	expiresAt: string;
+	expiresAt: string | null;
 	maxUses: number;
 	uses: { user: string; at: string }[];
 	revokedAt?: string;
+	inviter?: { user: string; device: string };
 	status: InviteStatus;
 }

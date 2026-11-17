@@ -2,7 +2,8 @@ import { error } from '@sveltejs/kit';
 import { validateSession } from '$lib/server/session.js';
 import { bs } from '$lib/server/bigscale-server.js';
 import { deleteDeviceMeta, getAllDeviceMeta } from '$lib/server/device-meta.js';
-import { readPolicyRaw, withPolicyLock } from '$lib/server/policy-groups.js';
+import { readPolicyRaw, removePairsOf, withPanelRule, withPolicyLock } from '$lib/server/policy-groups.js';
+import { revokeInvitesBy } from '$lib/server/invite-store.js';
 import type { RequestHandler } from './$types';
 
 // Path looks like `node/<id>` (no trailing segments) — admin deleted the
@@ -61,15 +62,21 @@ function filterUsers(payload: string): string {
 // Resolve a user/node ID to its name (or owning user name) so we can refuse
 // to delete the reserved entities. Failure is treated as "not reserved" —
 // the engine itself will reject with 404 if the id doesn't exist.
-async function isReservedUser(id: string): Promise<boolean> {
+// The engine has no `GET user/<id>` (501 on v0.28): look the id up in the
+// filtered list instead.
+async function userName(id: string): Promise<string | null> {
 	try {
-		const res = await bs('GET', `user/${id}`);
-		if (!res.ok) return false;
-		const body = (await res.json()) as { user?: { name?: string } };
-		return body.user?.name === RESERVED_USER;
+		const res = await bs('GET', 'user', undefined, { id });
+		if (!res.ok) return null;
+		const body = (await res.json()) as { users?: { id?: string | number; name?: string }[] };
+		return body.users?.find((u) => String(u.id) === id)?.name ?? null;
 	} catch {
-		return false;
+		return null;
 	}
+}
+
+async function isReservedUser(id: string): Promise<boolean> {
+	return (await userName(id)) === RESERVED_USER;
 }
 async function isReservedNode(id: string): Promise<boolean> {
 	try {
@@ -97,7 +104,10 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 
 	// Refuse to delete the reserved `_panel` user or its `panel` device —
 	// tailscaled state in /var/lib/tailscale would orphan otherwise.
+	let deletedUser: string | null = null;
 	if (method === 'DELETE') {
+		const u = USER_DELETE_RE.exec(path);
+		if (u) deletedUser = await userName(u[1]);
 		const userMatch = USER_DELETE_RE.exec(path);
 		if (userMatch && (await isReservedUser(userMatch[1]))) {
 			return new Response(JSON.stringify({ message: 'reserved system user cannot be deleted' }), {
@@ -132,6 +142,8 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 	const send = () => bs(method, path, body, Object.keys(query).length ? query : undefined);
 	let res: Response | null;
 	if (method === 'PUT' && path === 'policy') {
+		const b = body as { policy?: unknown } | undefined;
+		if (b && typeof b.policy === 'string') b.policy = withPanelRule(b.policy);
 		res = await withPolicyLock(async () => {
 			if (base) {
 				const { updatedAt } = await readPolicyRaw();
@@ -158,6 +170,14 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 	if (method === 'DELETE' && res.ok) {
 		const m = NODE_DELETE_RE.exec(path);
 		if (m) deleteDeviceMeta(m[1]);
+		// A removed person loses what invites gave them and their pending
+		// invites die (they'd fail on redeem anyway; this makes it visible).
+		if (deletedUser) {
+			revokeInvitesBy(deletedUser);
+			await removePairsOf(deletedUser).catch((e) =>
+				console.error('[bigscale] policy: could not drop invite rules of', deletedUser, (e as Error).message)
+			);
+		}
 	}
 
 	return new Response(data, {

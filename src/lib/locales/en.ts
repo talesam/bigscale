@@ -276,7 +276,7 @@ export const en: Record<string, string> = {
 	'invites.form.newGroupName': 'New group name',
 	'invites.form.newGroupPlaceholder': 'family, work, support…',
 	'invites.form.mutual': 'Members of this group can reach each other',
-	'invites.form.maxUses': 'How many people',
+	'invites.form.maxUses': 'How many people can use this link',
 	'invites.form.validFor': 'Valid for',
 	'invites.form.days': '{n} day(s)',
 	'invites.form.note': 'Note (optional)',
@@ -307,4 +307,9 @@ export const en: Record<string, string> = {
 	'join.error.too_many_attempts': 'Too many attempts. Try again in a minute.',
 	'join.error.server_error': 'Could not reach the server. Try again.',
 	'settings.acl.changedMeanwhile': 'The rules were changed meanwhile (for example, someone joined through an invite). Reload them and redo your edit.',
+	'invites.form.maxUsesHint': 'This only limits this link — the group itself has no size limit, and every invite adds to it.',
+	'invites.form.noExpiry': 'Until used or cancelled',
+	'invites.noExpiry': 'No expiry',
+	'invites.by': 'invited by {user}',
+	'join.invitedBy': '{user} invited you to their BigScale network. After joining, you two can reach each other\'s devices.',
 };

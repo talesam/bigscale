@@ -15,6 +15,7 @@
 	let reason = '';
 	let group: string | null = null;
 	let expiresAt = '';
+	let invitedBy = '';
 	let copied = false;
 
 	$: appLink = token ? inviteAppLink(token) : '';
@@ -32,6 +33,7 @@
 		state = 'checking';
 		group = null;
 		expiresAt = '';
+		invitedBy = '';
 		try {
 			token = decodeURIComponent(location.hash.replace(/^#/, '')).trim();
 		} catch {
@@ -48,10 +50,16 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ invite: token })
 			});
-			const d = (await res.json().catch(() => ({}))) as { error?: string; group?: string | null; expiresAt?: string };
+			const d = (await res.json().catch(() => ({}))) as {
+				error?: string;
+				group?: string | null;
+				expiresAt?: string | null;
+				invitedBy?: string | null;
+			};
 			if (res.ok) {
 				group = d.group ?? null;
 				expiresAt = d.expiresAt ?? '';
+				invitedBy = d.invitedBy ?? '';
 				state = 'valid';
 			} else {
 				reason = d.error ?? 'unknown';
@@ -91,7 +99,11 @@
 				<p class="text-sm text-base-content/60 text-center">{$t('join.askAgain')}</p>
 			{:else}
 				<p class="text-center text-base-content/70">
-					{group ? $t('join.invitedToGroup', { group }) : $t('join.invited')}
+					{#if invitedBy}
+						{$t('join.invitedBy', { user: invitedBy })}
+					{:else}
+						{group ? $t('join.invitedToGroup', { group }) : $t('join.invited')}
+					{/if}
 				</p>
 				{#if expiresAt}
 					<p class="text-center text-xs text-base-content/50 -mt-2">{$t('join.validUntil', { date: formatDate(expiresAt) })}</p>

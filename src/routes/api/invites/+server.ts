@@ -49,10 +49,11 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 		if (!GROUP_NAME_RE.test(group)) return json({ error: 'invalid_group' }, { status: 400 });
 	}
 	const maxUses = intIn(body.maxUses, 1, MAX_USES_LIMIT, 1);
-	const validDays = intIn(body.validDays, 1, MAX_VALID_DAYS, 7);
+	// 0 (the default) = valid until used up or revoked.
+	const validDays = intIn(body.validDays, 0, MAX_VALID_DAYS, 0);
 	if (maxUses === null || validDays === null) return json({ error: 'invalid_limits' }, { status: 400 });
 	const note = typeof body.note === 'string' ? body.note.trim().slice(0, 80) : '';
 
-	const created = createInvite({ group, mutual: body.mutual !== false, note, maxUses, validDays });
+	const created = createInvite({ group, mutual: body.mutual !== false, note, maxUses, validDays: validDays || null });
 	return json(created, { status: 201 });
 };

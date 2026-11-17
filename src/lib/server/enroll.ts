@@ -73,6 +73,20 @@ export async function nameConflict(
 	return { taken: true };
 }
 
+/** Id of the engine user with this name, or null. */
+export async function userIdOf(name: string): Promise<string | null> {
+	const res = await bs('GET', 'user');
+	if (!res.ok) throw new Error(`list users (HTTP ${res.status})`);
+	const body = (await res.json()) as UsersResp;
+	const u = (body.users ?? []).find((x) => x.name === name);
+	return u?.id === undefined ? null : String(u.id);
+}
+
+/** Whether an engine user with this name exists. */
+export async function userExists(name: string): Promise<boolean> {
+	return (await allUserNames()).has(name);
+}
+
 /** Create a brand-new user. Returns its id. */
 export async function createUser(name: string, displayName: string): Promise<string> {
 	const res = await bs('POST', 'user', { name, displayName: displayName || name });

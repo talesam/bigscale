@@ -20,7 +20,7 @@
 	let newGroup = '';
 	let mutual = true;
 	let maxUses = 1;
-	let validDays = 7;
+	let validDays = 0;
 	let note = '';
 	let creating = false;
 
@@ -55,7 +55,7 @@
 		newGroup = '';
 		mutual = true;
 		maxUses = 1;
-		validDays = 7;
+		validDays = 0;
 		note = '';
 		showCreate = true;
 	}
@@ -166,6 +166,7 @@
 								{inv.group ? $t('invites.groupLabel', { group: inv.group }) : $t('invites.noGroupLabel')}
 							</span>
 							{#if inv.note}<span class="text-base-content/60 text-sm truncate">— {inv.note}</span>{/if}
+							{#if inv.inviter}<span class="badge badge-ghost badge-sm">{$t('invites.by', { user: inv.inviter.user })}</span>{/if}
 							<span class="flex-1"></span>
 							{#if inv.status === 'active'}
 								<button class="btn btn-ghost btn-xs text-error" on:click={() => (revokeTarget = inv)}>{$t('invites.revoke')}</button>
@@ -175,7 +176,7 @@
 							<span>{$t('invites.uses', { used: inv.uses.length, max: inv.maxUses })}</span>
 							<span>{$t('invites.created', { date: formatDate(inv.createdAt) })}</span>
 							{#if inv.status === 'active'}
-								<span>{$t('invites.expires', { date: formatDate(inv.expiresAt) })}</span>
+								<span>{inv.expiresAt ? $t('invites.expires', { date: formatDate(inv.expiresAt) }) : $t('invites.noExpiry')}</span>
 							{/if}
 						</div>
 						{#if inv.uses.length}
@@ -221,17 +222,20 @@
 			<div class="grid grid-cols-2 gap-3 mb-3">
 				<div class="form-control">
 					<label class="label" for="inv-uses"><span class="label-text">{$t('invites.form.maxUses')}</span></label>
-					<input id="inv-uses" type="number" min="1" max="50" class="input input-bordered" bind:value={maxUses} />
+					<input id="inv-uses" type="number" min="1" max="50" class="input input-bordered" bind:value={maxUses} aria-describedby="inv-uses-hint" />
 				</div>
 				<div class="form-control">
 					<label class="label" for="inv-days"><span class="label-text">{$t('invites.form.validFor')}</span></label>
 					<select id="inv-days" class="select select-bordered" bind:value={validDays}>
+						<option value={0}>{$t('invites.form.noExpiry')}</option>
 						<option value={1}>{$t('invites.form.days', { n: 1 })}</option>
 						<option value={7}>{$t('invites.form.days', { n: 7 })}</option>
 						<option value={30}>{$t('invites.form.days', { n: 30 })}</option>
 					</select>
 				</div>
 			</div>
+
+			<p id="inv-uses-hint" class="text-xs text-base-content/50 -mt-1 mb-3">{$t('invites.form.maxUsesHint')}</p>
 
 			<div class="form-control mb-1">
 				<label class="label" for="inv-note"><span class="label-text">{$t('invites.form.note')}</span></label>

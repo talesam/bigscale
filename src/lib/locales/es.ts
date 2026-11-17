@@ -276,7 +276,7 @@ export const es: Record<string, string> = {
 	'invites.form.newGroupName': 'Nombre del nuevo grupo',
 	'invites.form.newGroupPlaceholder': 'familia, trabajo, soporte…',
 	'invites.form.mutual': 'Los miembros de este grupo se ven en la red',
-	'invites.form.maxUses': 'Cuántas personas',
+	'invites.form.maxUses': 'Cuántas personas pueden usar este enlace',
 	'invites.form.validFor': 'Válida por',
 	'invites.form.days': '{n} día(s)',
 	'invites.form.note': 'Nota (opcional)',
@@ -307,4 +307,9 @@ export const es: Record<string, string> = {
 	'join.error.too_many_attempts': 'Demasiados intentos. Prueba de nuevo en un minuto.',
 	'join.error.server_error': 'No se pudo contactar al servidor. Prueba de nuevo.',
 	'settings.acl.changedMeanwhile': 'Las reglas cambiaron mientras editabas (por ejemplo, alguien entró con una invitación). Recárgalas y repite la edición.',
+	'invites.form.maxUsesHint': 'Esto solo limita este enlace: el grupo no tiene límite de personas y cada invitación lo amplía.',
+	'invites.form.noExpiry': 'Hasta que se use o se cancele',
+	'invites.noExpiry': 'Sin vencimiento',
+	'invites.by': 'invitado por {user}',
+	'join.invitedBy': '{user} te invitó a su red BigScale. Al entrar, ambos podrán acceder a los dispositivos del otro.',
 };

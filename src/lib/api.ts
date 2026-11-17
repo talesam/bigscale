@@ -240,6 +240,7 @@ export async function createInvite(opts: {
 	mutual: boolean;
 	note: string;
 	maxUses: number;
+	/** 0 = no expiry. */
 	validDays: number;
 }): Promise<{ invite: Invite; token: string }> {
 	return invitesReq('POST', '', opts);

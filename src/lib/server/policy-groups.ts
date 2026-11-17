@@ -1,4 +1,4 @@
-import { parsePolicy, serializePolicy, type AclPolicy } from '$lib/acl.js';
+import { parsePolicy, serializePolicy, type AclPolicy, type AclRule } from '$lib/acl.js';
 import { bs } from './bigscale-server.js';
 
 // Group membership edits on the engine's ACL policy, for invites: a person
@@ -117,5 +117,114 @@ export function addMember(group: string, user: string, mutual: boolean): Promise
 				}
 				await writePolicy(cur);
 			});
+	});
+}
+
+/** Groups (without the `group:` prefix) that list `user` as a member. */
+export async function groupsOf(user: string): Promise<string[]> {
+	const { policy } = await readPolicy();
+	const member = `${user}@`;
+	return Object.entries(policy.groups)
+		.filter(([k, members]) => k.startsWith('group:') && members.includes(member))
+		.map(([k]) => k.slice('group:'.length))
+		.sort((a, b) => a.localeCompare(b));
+}
+
+function isPairRule(r: AclRule, a: string, b: string): boolean {
+	const src = [...r.src].sort();
+	const want = [`${a}@`, `${b}@`].sort();
+	const dst = [...r.dst].sort();
+	const wantDst = [`${a}@:*`, `${b}@:*`].sort();
+	return (
+		r.action === 'accept' &&
+		!r._extra &&
+		src.length === 2 && src[0] === want[0] && src[1] === want[1] &&
+		dst.length === 2 && dst[0] === wantDst[0] && dst[1] === wantDst[1]
+	);
+}
+
+/**
+ * Let `a` and `b` reach each other (all their devices, both ways): what a
+ * member invite grants between the inviter and the newcomer. Returns an undo
+ * function. A no-op without a policy (everyone already reaches everyone).
+ */
+export function addPair(a: string, b: string): Promise<() => Promise<void>> {
+	return serialized(async () => {
+		const { policy, empty } = await readPolicy();
+		if (empty || policy.acls.some((r) => isPairRule(r, a, b))) return async () => {};
+		policy.acls.push({ action: 'accept', src: [`${a}@`, `${b}@`], dst: [`${a}@:*`, `${b}@:*`] });
+		await writePolicy(policy);
+		return () =>
+			serialized(async () => {
+				const { policy: cur } = await readPolicy();
+				cur.acls = cur.acls.filter((r) => !isPairRule(r, a, b));
+				await writePolicy(cur);
+			});
+	});
+}
+
+/**
+ * Drop the pair rules invites created for `user` (when the admin deletes that
+ * user). Admin-written rules are left alone, even if they mention the user.
+ */
+export function removePairsOf(user: string): Promise<void> {
+	return serialized(async () => {
+		const { policy, empty } = await readPolicy();
+		if (empty) return;
+		const mine = `${user}@`;
+		const kept = policy.acls.filter((r) => {
+			if (r.action !== 'accept' || r._extra || r.src.length !== 2 || !r.src.includes(mine)) return true;
+			const other = r.src.find((s) => s !== mine)?.slice(0, -1) ?? '';
+			return !isPairRule(r, user, other);
+		});
+		if (kept.length === policy.acls.length) return;
+		policy.acls = kept;
+		await writePolicy(policy);
+	});
+}
+
+/** True when no policy is stored: every device reaches every other one. */
+export async function policyIsOpen(): Promise<boolean> {
+	return !(await readPolicyRaw()).text.trim();
+}
+
+// The panel joins the tailnet as user `_panel` (scripts/entrypoint.sh) and
+// serves the peer-facing API (/api/me/…, /api/devices/…) on port 3000 there,
+// authenticating callers by their tunnel address. This rule lets every
+// device reach that one port — nothing else on the panel, and the panel
+// itself still reaches nobody (rules are one-way).
+const PANEL_DST = '_panel@:3000';
+
+function isPanelRule(r: AclRule): boolean {
+	return r.action === 'accept' && r.src.length === 1 && r.src[0] === '*' && r.dst.length === 1 && r.dst[0] === PANEL_DST;
+}
+
+/**
+ * `text` with the panel rule added when missing — applied to policies the
+ * admin saves, so the editor can't silently cut BigLace off from the panel.
+ * Unparseable text, or an empty policy (everyone reaches everyone), is
+ * returned unchanged for the engine to judge.
+ */
+export function withPanelRule(text: string): string {
+	if (!text.trim()) return text;
+	let policy: AclPolicy;
+	try {
+		policy = parsePolicy(text);
+	} catch {
+		return text;
+	}
+	if (policy.acls.some(isPanelRule)) return text;
+	policy.acls.push({ action: 'accept', src: ['*'], dst: [PANEL_DST] });
+	return serializePolicy(policy);
+}
+
+/** Make sure devices can reach the panel's peer API. Returns true if it wrote. */
+export function ensurePanelReachable(): Promise<boolean> {
+	return serialized(async () => {
+		const { policy, empty } = await readPolicy();
+		if (empty || policy.acls.some(isPanelRule)) return false;
+		policy.acls.push({ action: 'accept', src: ['*'], dst: [PANEL_DST] });
+		await writePolicy(policy);
+		return true;
 	});
 }

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { extractClientIp, getNodeByTailnetIp } from '$lib/server/tailnet-auth.js';
+import { extractClientIp, getNodeByTailnetIp, isDirectTailnetRequest } from '$lib/server/tailnet-auth.js';
 import { bsJson } from '$lib/server/bigscale-server.js';
 import { getAllDeviceMeta } from '$lib/server/device-meta.js';
 import type { Device } from '$lib/types.js';
@@ -25,6 +25,7 @@ interface NodesResponse {
 }
 
 export const GET: RequestHandler = async ({ request, getClientAddress }) => {
+	if (!isDirectTailnetRequest(request)) return json({ error: 'direct tailnet requests only' }, { status: 401 });
 	const ip = extractClientIp(request, getClientAddress);
 	if (!ip) return json({ error: 'unidentifiable peer' }, { status: 401 });
 

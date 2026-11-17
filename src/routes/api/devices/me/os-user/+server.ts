@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { extractClientIp, getNodeByTailnetIp } from '$lib/server/tailnet-auth.js';
+import { extractClientIp, getNodeByTailnetIp, isDirectTailnetRequest } from '$lib/server/tailnet-auth.js';
 import { getDeviceMeta, setOsUser } from '$lib/server/device-meta.js';
 
 // POST /api/devices/me/os-user
@@ -22,6 +22,7 @@ const WRITE_COOLDOWN_MS = 60_000;
 const lastWriteAt = new Map<string, number>();
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
+	if (!isDirectTailnetRequest(request)) return json({ error: 'direct tailnet requests only' }, { status: 401 });
 	const ip = extractClientIp(request, getClientAddress);
 	if (!ip) return json({ error: 'unidentifiable peer' }, { status: 401 });
 

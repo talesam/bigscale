@@ -25,6 +25,15 @@ export interface InviteUse {
 	at: string;
 }
 
+/** Member who created the invite from BigLace (absent for admin invites). */
+export interface Inviter {
+	user: string;
+	/** Engine user id: a user deleted and re-created under the same name is a
+	 * different person and must not inherit the old invites. */
+	userId: string;
+	device: string;
+}
+
 export interface Invite {
 	id: string;
 	hash: string;
@@ -34,10 +43,14 @@ export interface Invite {
 	mutual: boolean;
 	note: string;
 	createdAt: string;
-	expiresAt: string;
+	/** null: valid until used up or revoked. */
+	expiresAt: string | null;
 	maxUses: number;
 	uses: InviteUse[];
 	revokedAt?: string;
+	/** Who invited, when created by a member: the newcomer and the inviter
+	 * get a rule letting them reach each other. */
+	inviter?: Inviter;
 }
 
 /** What the admin UI gets — never the hash. */
@@ -76,7 +89,7 @@ export function hashToken(token: string): string {
 export function statusOf(inv: Invite, now = Date.now()): InviteStatus {
 	if (inv.revokedAt) return 'revoked';
 	if (inv.uses.length >= inv.maxUses) return 'used';
-	if (Date.parse(inv.expiresAt) <= now) return 'expired';
+	if (inv.expiresAt && Date.parse(inv.expiresAt) <= now) return 'expired';
 	return 'active';
 }
 
@@ -89,7 +102,7 @@ function prune(list: Invite[], now: number): Invite[] {
 	return list.filter((inv) => {
 		if (statusOf(inv, now) === 'active') return true;
 		const finishedAt = Math.max(
-			Date.parse(inv.expiresAt) || 0,
+			Date.parse(inv.expiresAt ?? '') || 0,
 			Date.parse(inv.revokedAt ?? '') || 0,
 			...inv.uses.map((u) => Date.parse(u.at) || 0)
 		);
@@ -113,7 +126,9 @@ export interface NewInvite {
 	mutual: boolean;
 	note: string;
 	maxUses: number;
-	validDays: number;
+	/** null: no expiry. */
+	validDays: number | null;
+	inviter?: Inviter;
 }
 
 /** Create an invite. Returns the public view plus the secret token (shown once). */
@@ -127,22 +142,43 @@ export function createInvite(opts: NewInvite): { invite: InviteView; token: stri
 		mutual: opts.mutual,
 		note: opts.note,
 		createdAt: new Date(now).toISOString(),
-		expiresAt: new Date(now + opts.validDays * 24 * 60 * 60 * 1000).toISOString(),
+		expiresAt: opts.validDays ? new Date(now + opts.validDays * 24 * 60 * 60 * 1000).toISOString() : null,
 		maxUses: opts.maxUses,
 		uses: []
 	};
+	if (opts.inviter) inv.inviter = opts.inviter;
 	const list = load();
 	list.push(inv);
 	persist(list);
 	return { invite: view(inv), token };
 }
 
-export function revokeInvite(id: string): boolean {
-	const inv = load().find((i) => i.id === id);
+/** Invites a member created, newest first (for their BigLace). */
+export function listInvitesBy(user: string): InviteView[] {
+	return listInvites().filter((i) => i.inviter?.user === user);
+}
+
+/** Revoke an invite; with `onlyBy`, only if that member created it. */
+export function revokeInvite(id: string, onlyBy?: string): boolean {
+	const inv = load().find((i) => i.id === id && (onlyBy === undefined || i.inviter?.user === onlyBy));
 	if (!inv || inv.revokedAt) return false;
 	inv.revokedAt = new Date().toISOString();
 	persist(load());
 	return true;
+}
+
+/** Revoke every pending invite a member created (the member was removed). */
+export function revokeInvitesBy(user: string): number {
+	const now = new Date().toISOString();
+	let n = 0;
+	for (const inv of load()) {
+		if (inv.inviter?.user === user && statusOf(inv) === 'active') {
+			inv.revokedAt = now;
+			n++;
+		}
+	}
+	if (n) persist(load());
+	return n;
 }
 
 export type LookupFailure = 'unknown' | 'expired' | 'used' | 'revoked';

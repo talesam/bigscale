@@ -1,7 +1,7 @@
 import { BIGSCALE_PUBLIC_URL } from './config.js';
-import { createUser, deleteUser, displayNameFrom, mintKey, nameConflict, userNameFrom } from './enroll.js';
+import { createUser, deleteUser, displayNameFrom, mintKey, nameConflict, userIdOf, userNameFrom } from './enroll.js';
 import { lookup, recordUse, reserve, type LookupFailure } from './invite-store.js';
-import { addMember, referencedUsers } from './policy-groups.js';
+import { addMember, addPair, groupsOf, referencedUsers } from './policy-groups.js';
 
 // Redeeming an invite: the only unauthenticated write the panel offers. The
 // invite token *is* the credential, so everything here is about not letting
@@ -58,6 +58,8 @@ export interface JoinSuccess {
 	server_url: string;
 	user: string;
 	group: string | null;
+	/** Member who invited (the newcomer can reach their devices), if any. */
+	invited_by: string | null;
 }
 
 const STATUS: Record<LookupFailure, number> = { unknown: 404, expired: 410, used: 410, revoked: 410 };
@@ -71,12 +73,16 @@ function failed(client: string, reason: LookupFailure): JoinFailure {
 export function checkInvite(
 	client: string,
 	token: unknown
-): JoinFailure | { group: string | null; expiresAt: string } {
+): JoinFailure | { group: string | null; expiresAt: string | null; invitedBy: string | null } {
 	if (typeof token !== 'string' || !TOKEN_RE.test(token)) return { status: 400, error: 'invalid_request' };
 	if (throttled(client, Date.now())) return { status: 429, error: 'too_many_attempts' };
 	const found = lookup(token);
 	if ('reason' in found) return failed(client, found.reason);
-	return { group: found.invite.group, expiresAt: found.invite.expiresAt };
+	return {
+		group: found.invite.group,
+		expiresAt: found.invite.expiresAt,
+		invitedBy: found.invite.inviter?.user ?? null
+	};
 }
 
 export async function redeemInvite(
@@ -98,18 +104,39 @@ export async function redeemInvite(
 
 	let userId: string | null = null;
 	let undoGroup: (() => Promise<void>) | null = null;
+	let undoPair: (() => Promise<void>) | null = null;
 	try {
 		// A name the policy already mentions would inherit that access.
+		// A member's invite lives only as long as that member: if the admin
+		// removed them, everything they handed out stops working.
+		const inviter = invite.inviter ?? null;
+		if (inviter) {
+			const id = await userIdOf(inviter.user);
+			if (id === null || (inviter.userId && id !== inviter.userId)) return failed(client, 'revoked');
+		}
+
 		const conflict = await nameConflict(user, await referencedUsers());
 		if (conflict.taken) return { status: 409, error: 'name_taken', suggestion: conflict.suggestion };
 
+		// A member's invite can only grant what the member still has: if they
+		// left the group since inviting, that part lapses.
+		let group = invite.group;
+		if (group && inviter && !(await groupsOf(inviter.user)).includes(group)) group = null;
+
 		userId = await createUser(user, displayNameFrom(rawName));
-		if (invite.group) undoGroup = await addMember(invite.group, user, invite.mutual);
+		if (group) undoGroup = await addMember(group, user, invite.mutual);
+		if (inviter) undoPair = await addPair(inviter.user, user);
 		const authkey = await mintKey(userId);
 
 		recordUse(invite.id, user);
 		userId = null; // committed: nothing to roll back
-		return { authkey, server_url: BIGSCALE_PUBLIC_URL, user, group: invite.group };
+		return {
+			authkey,
+			server_url: BIGSCALE_PUBLIC_URL,
+			user,
+			group,
+			invited_by: inviter?.user ?? null
+		};
 	} catch (e) {
 		console.error('[join] redeem failed:', (e as Error).message);
 		return { status: 502, error: 'server_error' };
@@ -117,6 +144,7 @@ export async function redeemInvite(
 		if (userId !== null) {
 			// Roll back so a retry with the same name works and no orphan
 			// user is left behind. Best effort: report, don't throw.
+			if (undoPair) await undoPair().catch((e) => console.error('[join] undo pair:', e));
 			if (undoGroup) await undoGroup().catch((e) => console.error('[join] undo group:', e));
 			await deleteUser(userId).catch((e) => console.error('[join] undo user:', e));
 		}
