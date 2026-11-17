@@ -7,6 +7,8 @@
 	import { logout as apiLogout, getHealth } from '$lib/api';
 	import { initLocale, t } from '$lib/i18n';
 
+	export let data: { signedInAs?: string | null } = {};
+
 	// Pages shown without the admin chrome (and without health polling).
 	$: isLogin = $page.url.pathname === '/login' || $page.url.pathname === '/join';
 
@@ -168,6 +170,9 @@
 							{$t('nav.themeDark')}
 						{/if}
 					</button>
+					{#if data.signedInAs}
+						<p class="text-xs text-base-content/60 px-3">{$t('nav.signedInAs', { name: data.signedInAs })}</p>
+					{/if}
 					<button class="btn btn-ghost btn-sm justify-start gap-3 font-medium w-full text-error" on:click={logout}>
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

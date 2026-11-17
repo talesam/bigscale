@@ -7,6 +7,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const token = cookies.get('bs_session');
 	const session = token ? getSession(token) : null;
 	if (!session) return json({ error: 'Not authenticated' }, { status: 401 });
+	// Admins who came in from BigLace have no password here; the panel
+	// password belongs to the built-in admin account only.
+	if (session.user) return json({ error: 'not_for_network_admins' }, { status: 403 });
 
 	const { newPassword } = await request.json();
 	if (typeof newPassword !== 'string') {

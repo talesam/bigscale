@@ -19,5 +19,5 @@ export const load: LayoutServerLoad = async ({ cookies, url }) => {
 		throw redirect(302, '/change-password');
 	}
 
-	return { mustChangePassword: session.mustChangePassword };
+	return { mustChangePassword: session.mustChangePassword, signedInAs: session.user ?? null };
 };

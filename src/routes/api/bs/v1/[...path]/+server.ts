@@ -4,6 +4,7 @@ import { bs } from '$lib/server/bigscale-server.js';
 import { deleteDeviceMeta, getAllDeviceMeta } from '$lib/server/device-meta.js';
 import { readPolicyRaw, withPanelRule, withPolicyLock } from '$lib/server/policy-groups.js';
 import { afterUserDeleted, onNodeGone } from '$lib/server/accounts.js';
+import { revalidateAdminSessions } from '$lib/server/admins.js';
 import type { RequestHandler } from './$types';
 
 // Path looks like `node/<id>` (no trailing segments) — admin deleted the
@@ -159,6 +160,8 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 				headers: { 'Content-Type': 'application/json' }
 			});
 		}
+		// Someone may have been taken out of `admins` in the editor.
+		if (res.ok) await revalidateAdminSessions().catch(() => undefined);
 	} else {
 		res = await send();
 	}

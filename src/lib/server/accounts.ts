@@ -5,6 +5,8 @@ import { deleteDeviceMeta } from './device-meta.js';
 import { userIdOf } from './enroll.js';
 import { revokeInvitesBy } from './invite-store.js';
 import { removeUserFromPolicy } from './policy-groups.js';
+import { onOwnerGone } from './member-groups.js';
+import { dropSessionsOf } from './session.js';
 
 // Removing people and freeing their names: what happens to a user once it
 // has no device left, whoever asked (the admin, the person, or the sweep).
@@ -39,8 +41,12 @@ export async function deleteNode(id: string): Promise<void> {
 export async function afterUserDeleted(user: string): Promise<void> {
 	revokeInvitesBy(user);
 	forgetAccount(user);
+	dropSessionsOf(user);
 	await removeUserFromPolicy(user).catch((e) =>
 		console.error('[bigscale] policy: could not forget', user, (e as Error).message)
+	);
+	await onOwnerGone(user).catch((e) =>
+		console.error('[bigscale] groups: could not hand over the groups of', user, (e as Error).message)
 	);
 }
 

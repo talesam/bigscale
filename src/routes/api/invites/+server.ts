@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/admin-guard.js';
 import { createInvite, listInvites, MAX_USES_LIMIT, MAX_VALID_DAYS } from '$lib/server/invite-store.js';
-import { GROUP_NAME_RE, listGroups } from '$lib/server/policy-groups.js';
+import { ADMIN_GROUP, GROUP_NAME_RE, listGroups } from '$lib/server/policy-groups.js';
 import type { RequestHandler } from './$types';
 
 // GET  /api/invites → { invites, groups }   (admin)
@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	let group: string | null = null;
 	if (typeof body.group === 'string' && body.group.trim()) {
 		group = body.group.trim().toLowerCase().replace(/^group:/, '');
-		if (!GROUP_NAME_RE.test(group)) return json({ error: 'invalid_group' }, { status: 400 });
+		if (!GROUP_NAME_RE.test(group) || group === ADMIN_GROUP) return json({ error: 'invalid_group' }, { status: 400 });
 	}
 	const maxUses = intIn(body.maxUses, 1, MAX_USES_LIMIT, 1);
 	// 0 (the default) = valid until used up or revoked.

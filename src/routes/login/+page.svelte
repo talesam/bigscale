@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { login } from '$lib/api';
 	import { t } from '$lib/i18n';
@@ -8,6 +9,30 @@
 	let showPass = false;
 	let error = '';
 	let loading = false;
+
+	// One-time link from BigLace (menu → "Open admin panel"): sign in as
+	// that network admin, no password. The token is in the fragment, so it
+	// never reached a server log; drop it from the address bar right away.
+	onMount(async () => {
+		const m = /^#signin=([A-Za-z0-9_-]+)$/.exec(location.hash);
+		if (!m) return;
+		history.replaceState(null, '', location.pathname);
+		loading = true;
+		try {
+			const res = await fetch('/api/auth/token', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({ token: m[1] })
+			});
+			if (!res.ok) throw new Error();
+			goto('/devices');
+		} catch {
+			error = $t('login.linkInvalid');
+		} finally {
+			loading = false;
+		}
+	});
 
 	async function doLogin() {
 		error = '';

@@ -37,7 +37,8 @@ export async function readPolicyRaw(): Promise<{ text: string; updatedAt: string
 	return { text: body.policy ?? '', updatedAt: body.updatedAt ?? null };
 }
 
-async function readPolicy(): Promise<{ policy: AclPolicy; empty: boolean }> {
+/** Parsed policy (for modules that edit it under `withPolicyLock`). */
+export async function readPolicy(): Promise<{ policy: AclPolicy; empty: boolean }> {
 	const { text } = await readPolicyRaw();
 	return { policy: parsePolicy(text), empty: !text.trim() };
 }
@@ -55,7 +56,7 @@ export async function referencedUsers(): Promise<Set<string>> {
 	return out;
 }
 
-async function writePolicy(policy: AclPolicy): Promise<void> {
+export async function writePolicy(policy: AclPolicy): Promise<void> {
 	const res = await bs('PUT', 'policy', { policy: serializePolicy(policy) });
 	if (!res.ok) {
 		throw new Error(`write policy (HTTP ${res.status}): ${await res.text()}`);
@@ -64,12 +65,20 @@ async function writePolicy(policy: AclPolicy): Promise<void> {
 
 export const GROUP_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
+/**
+ * Policy group whose members administer the network (open the admin panel
+ * from BigLace, see $lib/server/admins.ts). Never offered in invites: being
+ * made an admin is a deliberate act, not a side effect of a link.
+ */
+export const ADMIN_GROUP = 'admins';
+
 /** Group names (without the `group:` prefix) defined in the current policy. */
 export async function listGroups(): Promise<string[]> {
 	const { policy } = await readPolicy();
 	return Object.keys(policy.groups)
 		.filter((g) => g.startsWith('group:'))
 		.map((g) => g.slice('group:'.length))
+		.filter((g) => g !== ADMIN_GROUP)
 		.sort((a, b) => a.localeCompare(b));
 }
 
@@ -120,13 +129,17 @@ export function addMember(group: string, user: string, mutual: boolean): Promise
 	});
 }
 
-/** Groups (without the `group:` prefix) that list `user` as a member. */
+/**
+ * Groups (without the `group:` prefix) that list `user` as a member — the
+ * ones they can invite into. The admin group is left out (see ADMIN_GROUP).
+ */
 export async function groupsOf(user: string): Promise<string[]> {
 	const { policy } = await readPolicy();
 	const member = `${user}@`;
 	return Object.entries(policy.groups)
 		.filter(([k, members]) => k.startsWith('group:') && members.includes(member))
 		.map(([k]) => k.slice('group:'.length))
+		.filter((g) => g !== ADMIN_GROUP)
 		.sort((a, b) => a.localeCompare(b));
 }
 

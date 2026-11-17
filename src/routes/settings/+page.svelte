@@ -12,6 +12,7 @@
 	import type { ApiKey } from '$lib/types';
 	import DateTimePicker from '$lib/components/DateTimePicker.svelte';
 	import AclEditor from '$lib/components/AclEditor.svelte';
+	import AdminsCard from '$lib/components/AdminsCard.svelte';
 
 	let apiKeys: ApiKey[] = [];
 	let keysLoading = false;
@@ -234,6 +235,8 @@
 			</div>
 		</div>
 	</div>
+
+	<AdminsCard />
 
 	<!-- API keys -->
 	<div class="card bg-base-100 border border-base-200 shadow-sm">
