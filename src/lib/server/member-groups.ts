@@ -65,6 +65,22 @@ function isMutualRule(r: AclRule, name: string): boolean {
 	);
 }
 
+/**
+ * Ownership record for `name`, only if the group as it is now is still the
+ * one the member created (exists, with its mutual rule). If the admin
+ * deleted it and later made a group with the same name, the old owner has no
+ * say over the new one: the stale record is dropped.
+ */
+function liveMeta(policy: AclPolicy, name: string): Meta | null {
+	const m = meta(name);
+	if (!m) return null;
+	if (key(name) in policy.groups && policy.acls.some((r) => isMutualRule(r, name))) return m;
+	const store = load();
+	delete store[name];
+	persist(store);
+	return null;
+}
+
 /** Whether anything besides the group's own mutual rule mentions it. */
 function referencedElsewhere(policy: AclPolicy, name: string): boolean {
 	const k = key(name);
@@ -107,7 +123,7 @@ export async function groupsFor(user: string): Promise<GroupView[]> {
 		.filter(([k, members]) => k.startsWith('group:') && k !== key(ADMIN_GROUP) && members.includes(me))
 		.map(([k, members]) => {
 			const name = k.slice('group:'.length);
-			const m = meta(name);
+			const m = liveMeta(policy, name);
 			return {
 				name,
 				kind: m ? ('member' as const) : ('network' as const),
@@ -126,7 +142,7 @@ export function createGroup(owner: string, rawName: unknown): Promise<GroupView>
 		// No policy: everyone reaches everyone, and writing a first policy
 		// here would cut the whole network off.
 		if (empty) throw new GroupFailure('open_network');
-		if (key(name) in policy.groups || meta(name)) throw new GroupFailure('name_taken');
+		if (key(name) in policy.groups || liveMeta(policy, name)) throw new GroupFailure('name_taken');
 		if (Object.values(load()).filter((m) => m.owner === owner).length >= MAX_OWNED) {
 			throw new GroupFailure('too_many');
 		}
@@ -152,16 +168,10 @@ async function dropGroup(policy: AclPolicy, name: string): Promise<void> {
 
 export function deleteGroup(caller: string, name: string): Promise<void> {
 	return withPolicyLock(async () => {
-		const m = meta(name);
+		const { policy } = await readPolicy();
+		const m = liveMeta(policy, name);
 		if (!m) throw new GroupFailure('not_member_group');
 		if (m.owner !== caller) throw new GroupFailure('not_owner');
-		const { policy } = await readPolicy();
-		if (!(key(name) in policy.groups)) {
-			const store = load();
-			delete store[name];
-			persist(store);
-			return;
-		}
 		// The admin may have written rules using the group (e.g. "família
 		// reaches the printer"): deleting it would make the policy invalid.
 		if (referencedElsewhere(policy, name)) throw new GroupFailure('in_use');
@@ -175,11 +185,11 @@ export function deleteGroup(caller: string, name: string): Promise<void> {
  */
 export function removeFromGroup(caller: string, name: string, user: string): Promise<void> {
 	return withPolicyLock(async () => {
-		const m = meta(name);
+		const { policy } = await readPolicy();
+		const m = liveMeta(policy, name);
 		if (!m) throw new GroupFailure('not_member_group');
 		if (caller !== m.owner && caller !== user) throw new GroupFailure('not_owner');
 		if (user === m.owner) throw new GroupFailure('owner_cannot_leave');
-		const { policy } = await readPolicy();
 		const members = policy.groups[key(name)];
 		if (!members?.includes(`${user}@`)) throw new GroupFailure('not_found');
 		policy.groups[key(name)] = members.filter((x) => x !== `${user}@`);

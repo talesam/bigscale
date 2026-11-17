@@ -213,18 +213,39 @@ export async function policyIsOpen(): Promise<boolean> {
 }
 
 // The panel joins the tailnet as user `_panel` (scripts/entrypoint.sh) and
-// serves the peer-facing API (/api/me/…, /api/devices/…) on port 3000 there,
-// authenticating callers by their tunnel address. This rule lets every
-// device reach that one port — nothing else on the panel, and the panel
-// itself still reaches nobody (rules are one-way).
+// serves the peer-facing API (/api/me/…, /api/devices/…) on port 3000 there.
+// Two rules keep that working under any policy:
+//   - every device may reach that one port (nothing else on the panel);
+//   - the panel may reach each device's BigLace agent port, and only that,
+//     to have the device prove its key (see device-auth.ts). The panel still
+//     reaches nothing else on any device.
 const PANEL_DST = '_panel@:3000';
+const AGENT_DST = '*:41980';
 
 function isPanelRule(r: AclRule): boolean {
 	return r.action === 'accept' && r.src.length === 1 && r.src[0] === '*' && r.dst.length === 1 && r.dst[0] === PANEL_DST;
 }
 
+function isAgentRule(r: AclRule): boolean {
+	return r.action === 'accept' && r.src.length === 1 && r.src[0] === '_panel@' && r.dst.length === 1 && r.dst[0] === AGENT_DST;
+}
+
+/** Add the panel's rules to `policy` when missing. Returns true if it changed. */
+function addPanelRules(policy: AclPolicy): boolean {
+	let changed = false;
+	if (!policy.acls.some(isPanelRule)) {
+		policy.acls.push({ action: 'accept', src: ['*'], dst: [PANEL_DST] });
+		changed = true;
+	}
+	if (!policy.acls.some(isAgentRule)) {
+		policy.acls.push({ action: 'accept', src: ['_panel@'], dst: [AGENT_DST] });
+		changed = true;
+	}
+	return changed;
+}
+
 /**
- * `text` with the panel rule added when missing — applied to policies the
+ * `text` with the panel rules added when missing — applied to policies the
  * admin saves, so the editor can't silently cut BigLace off from the panel.
  * Unparseable text, or an empty policy (everyone reaches everyone), is
  * returned unchanged for the engine to judge.
@@ -237,17 +258,14 @@ export function withPanelRule(text: string): string {
 	} catch {
 		return text;
 	}
-	if (policy.acls.some(isPanelRule)) return text;
-	policy.acls.push({ action: 'accept', src: ['*'], dst: [PANEL_DST] });
-	return serializePolicy(policy);
+	return addPanelRules(policy) ? serializePolicy(policy) : text;
 }
 
-/** Make sure devices can reach the panel's peer API. Returns true if it wrote. */
+/** Make sure devices and the panel can reach each other's API ports. Returns true if it wrote. */
 export function ensurePanelReachable(): Promise<boolean> {
 	return serialized(async () => {
 		const { policy, empty } = await readPolicy();
-		if (empty || policy.acls.some(isPanelRule)) return false;
-		policy.acls.push({ action: 'accept', src: ['*'], dst: [PANEL_DST] });
+		if (empty || !addPanelRules(policy)) return false;
 		await writePolicy(policy);
 		return true;
 	});

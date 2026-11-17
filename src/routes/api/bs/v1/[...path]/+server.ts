@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { validateSession } from '$lib/server/session.js';
 import { bs } from '$lib/server/bigscale-server.js';
 import { deleteDeviceMeta, getAllDeviceMeta } from '$lib/server/device-meta.js';
+import { forgetDeviceKey } from '$lib/server/device-auth.js';
 import { readPolicyRaw, withPanelRule, withPolicyLock } from '$lib/server/policy-groups.js';
 import { afterUserDeleted, onNodeGone } from '$lib/server/accounts.js';
 import { revalidateAdminSessions } from '$lib/server/admins.js';
@@ -174,7 +175,10 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 
 	if (method === 'DELETE' && res.ok) {
 		const m = NODE_DELETE_RE.exec(path);
-		if (m) deleteDeviceMeta(m[1]);
+		if (m) {
+			deleteDeviceMeta(m[1]);
+			forgetDeviceKey(m[1]);
+		}
 		// A removed person loses what invites gave them (pair rules, groups)
 		// and their pending invites die; the name is free again.
 		if (deletedUser) await afterUserDeleted(deletedUser);

@@ -4,6 +4,7 @@ import { lookup, recordUse, reserve, type LookupFailure } from './invite-store.j
 import { addMember, addPair, groupsOf, referencedUsers } from './policy-groups.js';
 import { getAccount, reclaimMatches, recordAccount, rotateReclaim } from './account-store.js';
 import { deleteNode, nodesOf } from './accounts.js';
+import { devicePub, pinForEnrollment } from './device-auth.js';
 
 // Redeeming an invite: the only unauthenticated write the panel offers. The
 // invite token *is* the credential, so everything here is about not letting
@@ -92,7 +93,8 @@ export function checkInvite(
 export async function redeemInvite(
 	client: string,
 	token: unknown,
-	rawName: unknown
+	rawName: unknown,
+	deviceKey: unknown = undefined
 ): Promise<JoinFailure | JoinSuccess> {
 	if (typeof token !== 'string' || !TOKEN_RE.test(token) || typeof rawName !== 'string') {
 		return { status: 400, error: 'invalid_request' };
@@ -130,7 +132,11 @@ export async function redeemInvite(
 		userId = await createUser(user, displayNameFrom(rawName));
 		if (group) undoGroup = await addMember(group, user, invite.mutual);
 		if (inviter) undoPair = await addPair(inviter.user, user);
-		const authkey = await mintKey(userId);
+		const minted = await mintKey(userId);
+		// The device that registers with this key must sign with this
+		// BigLace key (see device-auth.ts).
+		pinForEnrollment(minted.id, devicePub(deviceKey));
+		const authkey = minted.key;
 
 		recordUse(invite.id, user);
 		const reclaim = recordAccount(user, userId);
@@ -178,11 +184,16 @@ export interface RejoinSuccess {
  * closing its connection stays "online" for minutes, and only the account's
  * owner (holder of the secret) can do this to the account's own devices.
  */
+// One rejoin per account at a time: the secret is checked, then rotated
+// after some awaits — two concurrent uses must not both get through.
+const rejoining = new Set<string>();
+
 export async function rejoin(
 	client: string,
 	rawUser: unknown,
 	secret: unknown,
-	rawHost: unknown
+	rawHost: unknown,
+	deviceKey: unknown = undefined
 ): Promise<JoinFailure | RejoinSuccess> {
 	if (typeof rawUser !== 'string' || typeof secret !== 'string' || !SECRET_RE.test(secret)) {
 		return { status: 400, error: 'invalid_request' };
@@ -190,11 +201,13 @@ export async function rejoin(
 	const hostname = typeof rawHost === 'string' && HOST_RE.test(rawHost) ? rawHost : null;
 	if (throttled(client, Date.now())) return { status: 429, error: 'too_many_attempts' };
 	const user = rawUser.trim().toLowerCase();
+	if (rejoining.has(user)) return { status: 429, error: 'too_many_attempts' };
 	const acc = getAccount(user);
 	if (!acc || !reclaimMatches(user, secret)) {
 		noteFailure(client, Date.now());
 		return { status: 403, error: 'revoked' };
 	}
+	rejoining.add(user);
 	try {
 		const id = await userIdOf(user);
 		// Gone (removed by the admin or the cleanup), or the name now belongs
@@ -208,12 +221,15 @@ export async function rejoin(
 				if (n.givenName === hostname || n.name === hostname) await deleteNode(n.id);
 			}
 		}
-		const authkey = await mintKey(id);
+		const minted = await mintKey(id);
+		pinForEnrollment(minted.id, devicePub(deviceKey));
 		const reclaim = rotateReclaim(user, id);
-		return { authkey, server_url: BIGSCALE_PUBLIC_URL, user, reclaim };
+		return { authkey: minted.key, server_url: BIGSCALE_PUBLIC_URL, user, reclaim };
 	} catch (e) {
 		console.error('[join] rejoin failed:', (e as Error).message);
 		return { status: 502, error: 'server_error' };
+	} finally {
+		rejoining.delete(user);
 	}
 }
 

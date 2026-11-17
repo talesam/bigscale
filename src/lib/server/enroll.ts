@@ -101,8 +101,8 @@ export async function deleteUser(id: string): Promise<void> {
 	if (!res.ok) throw new Error(`delete user ${id} (HTTP ${res.status}): ${await res.text()}`);
 }
 
-/** One-time key the new device joins with. */
-export async function mintKey(userId: string): Promise<string> {
+/** One-time key the new device joins with, and its id (for enrollment pins). */
+export async function mintKey(userId: string): Promise<{ key: string; id: string }> {
 	const res = await bs('POST', 'preauthkey', {
 		user: userId,
 		reusable: false,
@@ -112,7 +112,7 @@ export async function mintKey(userId: string): Promise<string> {
 		expiration: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 	});
 	if (!res.ok) throw new Error(`mint key (HTTP ${res.status}): ${await res.text()}`);
-	const key = ((await res.json()) as { preAuthKey?: { key?: string } }).preAuthKey?.key;
-	if (!key) throw new Error('mint key: no key in response');
-	return key;
+	const pak = ((await res.json()) as { preAuthKey?: { key?: string; id?: string | number } }).preAuthKey;
+	if (!pak?.key || pak.id === undefined) throw new Error('mint key: no key in response');
+	return { key: pak.key, id: String(pak.id) };
 }

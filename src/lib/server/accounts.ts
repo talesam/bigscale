@@ -2,6 +2,7 @@ import type { Device } from '$lib/types.js';
 import { bs, bsJson } from './bigscale-server.js';
 import { forgetAccount, getAccount, listAccounts } from './account-store.js';
 import { deleteDeviceMeta } from './device-meta.js';
+import { forgetDeviceKey } from './device-auth.js';
 import { userIdOf } from './enroll.js';
 import { revokeInvitesBy } from './invite-store.js';
 import { removeUserFromPolicy } from './policy-groups.js';
@@ -31,6 +32,7 @@ export async function deleteNode(id: string): Promise<void> {
 	const res = await bs('DELETE', `node/${id}`);
 	if (!res.ok) throw new Error(`delete node ${id} (HTTP ${res.status}): ${await res.text()}`);
 	deleteDeviceMeta(id);
+	forgetDeviceKey(id);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { getAccount, keepAccount } from '$lib/server/account-store.js';
 import { deleteNode, nodesOf, purgeIfEmpty } from '$lib/server/accounts.js';
-import { callerDevice } from '$lib/server/member.js';
+import { jsonBody, requireMember } from '$lib/server/member.js';
 import type { RequestHandler } from './$types';
 
 // POST /api/me/leave { delete_account?: boolean }
@@ -22,15 +22,10 @@ const KEEP_DAYS = 90;
 const REMOVE_DELAY_MS = 1500;
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const me = await callerDevice(request, getClientAddress);
-	if (!me) return json({ error: 'not_a_member' }, { status: 401 });
+	const me = await requireMember(request, getClientAddress);
+	if (me instanceof Response) return me;
 
-	let body: { delete_account?: unknown } = {};
-	try {
-		body = (await request.json()) as typeof body;
-	} catch {
-		body = {};
-	}
+	const body = jsonBody<{ delete_account?: unknown }>(me.body) ?? {};
 	const wantsDelete = body.delete_account === true;
 	const invited = getAccount(me.user) !== null;
 	if (wantsDelete && !invited) return json({ error: 'not_allowed' }, { status: 403 });

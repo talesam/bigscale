@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { PANEL_PUBLIC_URL } from '$lib/server/config-panel.js';
 import { createInvite, listInvitesBy } from '$lib/server/invite-store.js';
-import { callerMember } from '$lib/server/member.js';
+import { inviterOf, jsonBody, requireMember } from '$lib/server/member.js';
 import { groupsOf, policyIsOpen } from '$lib/server/policy-groups.js';
 import type { RequestHandler } from './$types';
 
@@ -33,8 +33,8 @@ function underDailyLimit(user: string): boolean {
 }
 
 export const GET: RequestHandler = async ({ request, getClientAddress }) => {
-	const me = await callerMember(request, getClientAddress);
-	if (!me) return json({ error: 'not_a_member' }, { status: 401 });
+	const me = await requireMember(request, getClientAddress);
+	if (me instanceof Response) return me;
 	let groups: string[] = [];
 	try {
 		groups = await groupsOf(me.user);
@@ -45,15 +45,11 @@ export const GET: RequestHandler = async ({ request, getClientAddress }) => {
 };
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const me = await callerMember(request, getClientAddress);
-	if (!me) return json({ error: 'not_a_member' }, { status: 401 });
+	const me = await requireMember(request, getClientAddress);
+	if (me instanceof Response) return me;
 
-	let body: { group?: unknown; note?: unknown };
-	try {
-		body = (await request.json()) as typeof body;
-	} catch {
-		return json({ error: 'invalid_request' }, { status: 400 });
-	}
+	const body = jsonBody<{ group?: unknown; note?: unknown }>(me.body);
+	if (!body) return json({ error: 'invalid_request' }, { status: 400 });
 
 	// Without any access rules everyone already reaches everyone, so a
 	// member invite would hand a stranger the whole network: admins only.
@@ -88,7 +84,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		note,
 		maxUses: 1,
 		validDays: null,
-		inviter: me
+		inviter: inviterOf(me)
 	});
 	const now = Date.now();
 	created.set(me.user, [...(created.get(me.user) ?? []), now]);

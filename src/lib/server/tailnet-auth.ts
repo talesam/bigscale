@@ -16,7 +16,7 @@ interface NodeListResponse {
 	nodes?: Device[];
 }
 
-function isTailnetAddr(ip: string): boolean {
+export function isTailnetAddr(ip: string): boolean {
 	if (ip.startsWith('100.')) {
 		// CGNAT range used by tailscale: 100.64.0.0/10
 		const second = Number.parseInt(ip.split('.')[1] ?? '', 10);
@@ -65,12 +65,12 @@ export function extractClientIp(request: Request, getClientAddress: () => string
 	}
 }
 
-export async function getNodeByTailnetIp(ip: string): Promise<Device | null> {
+export async function getNodeByTailnetIp(ip: string, opts: { fresh?: boolean } = {}): Promise<Device | null> {
 	if (!isTailnetAddr(ip)) return null;
 
 	const now = Date.now();
 	const cached = cache.get(ip);
-	if (cached && cached.expiresAt > now) return cached.device;
+	if (!opts.fresh && cached && cached.expiresAt > now) return cached.device;
 
 	let device: Device | null = null;
 	try {

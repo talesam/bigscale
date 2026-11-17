@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { extractClientIp, getNodeByTailnetIp, isDirectTailnetRequest } from '$lib/server/tailnet-auth.js';
+import { authenticateDevice, jsonBody } from '$lib/server/device-auth.js';
 import { getDeviceMeta, setOsUser } from '$lib/server/device-meta.js';
 
 // POST /api/devices/me/os-user
 //
 // Called by the biglace client right after `tailscale up` so the panel can
-// learn which OS-level $USER lives on each device. Identity is the tunnel
-// itself — we look up the source IP in the engine and trust that the node
-// behind 100.64.x.y is the one making the request.
+// learn which OS-level $USER lives on each device. Identity: a signed request
+// from the device's BigLace (see device-auth.ts) — not the source address
+// alone, which a VM or container behind the device would share.
 //
 // Idempotent: if the stored value matches the request, we answer 304 and
 // skip the disk write. biglace POSTs on every connect/retry, so this is the
@@ -22,19 +22,12 @@ const WRITE_COOLDOWN_MS = 60_000;
 const lastWriteAt = new Map<string, number>();
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	if (!isDirectTailnetRequest(request)) return json({ error: 'direct tailnet requests only' }, { status: 401 });
-	const ip = extractClientIp(request, getClientAddress);
-	if (!ip) return json({ error: 'unidentifiable peer' }, { status: 401 });
+	const auth = await authenticateDevice(request, getClientAddress);
+	if ('error' in auth) return json({ error: auth.error }, { status: auth.status });
+	const { node } = auth;
 
-	const node = await getNodeByTailnetIp(ip);
-	if (!node) return json({ error: 'peer is not a known tailnet node' }, { status: 401 });
-
-	let body: { os_user?: unknown };
-	try {
-		body = (await request.json()) as { os_user?: unknown };
-	} catch {
-		return json({ error: 'invalid JSON body' }, { status: 400 });
-	}
+	const body = jsonBody<{ os_user?: unknown }>(auth.body);
+	if (!body) return json({ error: 'invalid JSON body' }, { status: 400 });
 
 	const osUser = typeof body.os_user === 'string' ? body.os_user.trim() : '';
 	if (!osUser || !OS_USER_RE.test(osUser)) {

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { extractClientIp, getNodeByTailnetIp, isDirectTailnetRequest } from '$lib/server/tailnet-auth.js';
+import { authenticateDevice } from '$lib/server/device-auth.js';
 import { bsJson } from '$lib/server/bigscale-server.js';
 import { getAllDeviceMeta } from '$lib/server/device-meta.js';
 import type { Device } from '$lib/types.js';
@@ -12,9 +12,9 @@ import type { Device } from '$lib/types.js';
 // for peers without requiring an admin session — the equivalent of the POST
 // counterpart on /api/devices/me/os-user.
 //
-// Auth: tunnel identity. The caller must be a known tailnet node (its source
-// IP must resolve to a node via the engine). Same gate as the POST endpoint,
-// for the same reason: this endpoint is meant for peers, not the admin UI.
+// Auth: a signed request from the device's BigLace (see device-auth.ts).
+// Same gate as the POST endpoint: this endpoint is meant for peers, not the
+// admin UI.
 //
 // Hostname source: prefers `givenName` (the headscale-assigned name, which
 // matches biglace's display name) and falls back to `name`. Devices missing
@@ -25,12 +25,8 @@ interface NodesResponse {
 }
 
 export const GET: RequestHandler = async ({ request, getClientAddress }) => {
-	if (!isDirectTailnetRequest(request)) return json({ error: 'direct tailnet requests only' }, { status: 401 });
-	const ip = extractClientIp(request, getClientAddress);
-	if (!ip) return json({ error: 'unidentifiable peer' }, { status: 401 });
-
-	const node = await getNodeByTailnetIp(ip);
-	if (!node) return json({ error: 'peer is not a known tailnet node' }, { status: 401 });
+	const auth = await authenticateDevice(request, getClientAddress);
+	if ('error' in auth) return json({ error: auth.error }, { status: auth.status });
 
 	const meta = getAllDeviceMeta();
 	let nodes: Device[] = [];

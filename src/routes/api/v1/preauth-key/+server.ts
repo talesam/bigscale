@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { verifyAdmin } from '$lib/server/admin-store.js';
 import { bs } from '$lib/server/bigscale-server.js';
 import { BIGSCALE_PUBLIC_URL } from '$lib/server/config.js';
+import { devicePub, pinForEnrollment } from '$lib/server/device-auth.js';
 import type { RequestHandler } from './$types';
 
 interface PreAuthBody {
@@ -9,6 +10,8 @@ interface PreAuthBody {
 	password?:  string;
 	node_user?: string;
 	hostname?:  string;
+	/** BigLace's device public key (see device-auth.ts). */
+	device_key?: string;
 }
 
 interface UserResp {
@@ -16,7 +19,7 @@ interface UserResp {
 }
 
 interface PreAuthKeyResp {
-	preAuthKey?: { key?: string };
+	preAuthKey?: { key?: string; id?: string | number };
 }
 
 interface PreAuthKey {
@@ -37,7 +40,7 @@ interface PreAuthKeysResp {
 // headscale versions for security. Don't try to reuse those.
 const MIN_REUSABLE_KEY_LEN = 48;
 
-async function findReusableKey(userId: string): Promise<string | null> {
+async function findReusableKey(userId: string): Promise<{ key: string; id: string } | null> {
 	// Each click on "Entrar" used to mint a brand new key, polluting the
 	// server with dozens of unused keys per user. Reuse one that's still
 	// good (belongs to this user, hasn't been redeemed, hasn't expired).
@@ -54,7 +57,7 @@ async function findReusableKey(userId: string): Promise<string | null> {
 			typeof k.key === 'string' &&
 			k.key.length >= MIN_REUSABLE_KEY_LEN
 	);
-	return candidate?.key ?? null;
+	return candidate?.key && candidate.id !== undefined ? { key: candidate.key, id: String(candidate.id) } : null;
 }
 
 // Trim leading/trailing '-' with index scans: an anchored `/-+$/` regex
@@ -137,7 +140,8 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Reuse an existing valid key for this user before minting a new one.
 	const reusable = await findReusableKey(userId);
 	if (reusable) {
-		return json({ authkey: reusable, server_url: BIGSCALE_PUBLIC_URL });
+		pinForEnrollment(reusable.id, devicePub(body.device_key));
+		return json({ authkey: reusable.key, server_url: BIGSCALE_PUBLIC_URL });
 	}
 
 	// 24h gives the user enough headroom to actually click Connect after the
@@ -163,6 +167,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!key) {
 		return json({ error: 'Unexpected response from BigScale server' }, { status: 502 });
 	}
+	if (data.preAuthKey?.id !== undefined) pinForEnrollment(String(data.preAuthKey.id), devicePub(body.device_key));
 
 	return json({
 		authkey:    key,
