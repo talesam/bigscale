@@ -57,9 +57,19 @@ async function findReusableKey(userId: string): Promise<string | null> {
 	return candidate?.key ?? null;
 }
 
+// Trim leading/trailing '-' with index scans: an anchored `/-+$/` regex
+// backtracks quadratically on long runs of dashes in the middle of the input.
+function trimDashes(s: string): string {
+	let start = 0;
+	let end = s.length;
+	while (start < end && s[start] === '-') start++;
+	while (end > start && s[end - 1] === '-') end--;
+	return s.slice(start, end);
+}
+
 function sanitizeName(raw: string): string {
 	const trimmed = raw.trim().toLowerCase();
-	const cleaned = trimmed.replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+	const cleaned = trimDashes(trimmed.replace(/[^a-z0-9-]/g, '-'));
 	return cleaned || 'user';
 }
 

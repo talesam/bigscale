@@ -85,7 +85,7 @@ export async function deleteDevice(id: string): Promise<void> {
 }
 
 export async function moveDevice(id: string, userId: string): Promise<Device> {
-	const d = await req<{ node: Device }>('POST', `node/${id}/user`, { user: parseInt(userId) });
+	const d = await req<{ node: Device }>('POST', `node/${id}/user`, { user: Number.parseInt(userId, 10) });
 	return d.node;
 }
 

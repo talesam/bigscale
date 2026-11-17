@@ -25,9 +25,9 @@ function hashPassword(plain: string): string {
 function verifyHash(plain: string, stored: string): boolean {
 	const parts = stored.split('$');
 	if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
-	const N = parseInt(parts[1], 10);
-	const r = parseInt(parts[2], 10);
-	const p = parseInt(parts[3], 10);
+	const N = Number.parseInt(parts[1], 10);
+	const r = Number.parseInt(parts[2], 10);
+	const p = Number.parseInt(parts[3], 10);
 	const salt = Buffer.from(parts[4], 'hex');
 	const expected = Buffer.from(parts[5], 'hex');
 	const actual = scryptSync(plain, salt, expected.length, { N, r, p });

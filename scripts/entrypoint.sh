@@ -17,9 +17,9 @@ TS_PID=""
 
 shutdown() {
   echo "[bigscale] signal received, terminating processes..."
-  [ -n "$PANEL_PID"  ] && kill -TERM "$PANEL_PID"  2>/dev/null || true
-  [ -n "$TS_PID"     ] && kill -TERM "$TS_PID"     2>/dev/null || true
-  [ -n "$SERVER_PID" ] && kill -TERM "$SERVER_PID" 2>/dev/null || true
+  [[ -n "$PANEL_PID"  ]] && kill -TERM "$PANEL_PID"  2>/dev/null || true
+  [[ -n "$TS_PID"     ]] && kill -TERM "$TS_PID"     2>/dev/null || true
+  [[ -n "$SERVER_PID" ]] && kill -TERM "$SERVER_PID" 2>/dev/null || true
   wait 2>/dev/null || true
   exit 0
 }
@@ -32,14 +32,14 @@ SERVER_PID=$!
 echo "[bigscale] waiting for server (HTTP /health + socket)..."
 i=0
 until wget -q -O /dev/null http://127.0.0.1:8080/health 2>/dev/null \
-      && [ -S /var/run/bigscale/bigscale.sock ] \
+      && [[ -S /var/run/bigscale/bigscale.sock ]] \
       && /usr/local/bin/bigscale apikeys list >/dev/null 2>&1; do
   i=$((i+1))
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "[bigscale] server died during boot, aborting."
     exit 1
   fi
-  if [ "$i" -gt 90 ]; then
+  if [[ "$i" -gt 90 ]]; then
     echo "[bigscale] timeout waiting for server"
     kill -TERM "$SERVER_PID" 2>/dev/null || true
     exit 1
@@ -47,13 +47,13 @@ until wget -q -O /dev/null http://127.0.0.1:8080/health 2>/dev/null \
   sleep 1
 done
 
-if [ ! -s /data/api-key ] || ! grep -q '^hskey-api-' /data/api-key; then
+if [[ ! -s /data/api-key ]] || ! grep -q '^hskey-api-' /data/api-key; then
   echo "[bigscale] minting new API key..."
   rm -f /data/api-key
   for try in 1 2 3 4 5; do
     KEY="$(/usr/local/bin/bigscale apikeys create --expiration 9999d 2>/dev/null \
             | grep -E '^hskey-api-' | tail -1)"
-    if [ -n "$KEY" ]; then
+    if [[ -n "$KEY" ]]; then
       printf '%s\n' "$KEY" > /data/api-key
       chmod 600 /data/api-key
       echo "[bigscale] API key saved at /data/api-key (attempt $try)"
@@ -62,7 +62,7 @@ if [ ! -s /data/api-key ] || ! grep -q '^hskey-api-' /data/api-key; then
     echo "[bigscale] attempt $try failed, retry in 2s..."
     sleep 2
   done
-  if [ ! -s /data/api-key ]; then
+  if [[ ! -s /data/api-key ]]; then
     echo "[bigscale] failed to mint API key"
     kill -TERM "$SERVER_PID" 2>/dev/null || true
     exit 1
@@ -85,10 +85,10 @@ fi
 PANEL_HOSTNAME="${BIGSCALE_PANEL_HOSTNAME:-panel}"
 TS_DISABLED="${BIGSCALE_DISABLE_TAILNET_PEER:-false}"
 
-if [ "$TS_DISABLED" = "true" ]; then
+if [[ "$TS_DISABLED" = "true" ]]; then
   echo "[bigscale] tailnet peer disabled via BIGSCALE_DISABLE_TAILNET_PEER"
 else
-  if [ -c /dev/net/tun ]; then
+  if [[ -c /dev/net/tun ]]; then
     TS_TUN_FLAG=""
     echo "[bigscale] starting tailscaled (TUN mode)..."
   else
@@ -104,7 +104,7 @@ else
 
   # Wait for the local control socket
   i=0
-  until [ -S /var/run/tailscale/tailscaled.sock ]; do
+  until [[ -S /var/run/tailscale/tailscaled.sock ]]; do
     i=$((i+1))
     if ! kill -0 "$TS_PID" 2>/dev/null; then
       echo "[bigscale] tailscaled died during boot — see /var/log/tailscaled.log"
@@ -112,7 +112,7 @@ else
       kill -TERM "$SERVER_PID" 2>/dev/null || true
       exit 1
     fi
-    if [ "$i" -gt 30 ]; then
+    if [[ "$i" -gt 30 ]]; then
       echo "[bigscale] timeout waiting for tailscaled socket"
       kill -TERM "$TS_PID" "$SERVER_PID" 2>/dev/null || true
       exit 1
@@ -137,7 +137,7 @@ else
     # name. Resolve `_panel` to its ID via `users list -o json`.
     PANEL_USER_ID="$(/usr/local/bin/bigscale users list -o json 2>/dev/null \
                     | jq -r '.[] | select(.name=="_panel") | .id' | head -1)"
-    if [ -z "$PANEL_USER_ID" ]; then
+    if [[ -z "$PANEL_USER_ID" ]]; then
       echo "[bigscale] could not resolve _panel user id"
       PANEL_PREAUTH=""
     else
@@ -145,7 +145,7 @@ else
       PANEL_PREAUTH="$(/usr/local/bin/bigscale preauthkeys create --user "$PANEL_USER_ID" --expiration 24h 2>/dev/null \
                       | grep -E '^(hskey-auth-[A-Za-z0-9_-]+|[a-f0-9]{40,})$' | tail -1)"
     fi
-    if [ -z "$PANEL_PREAUTH" ]; then
+    if [[ -z "$PANEL_PREAUTH" ]]; then
       echo "[bigscale] failed to mint preauth key for panel — continuing without tailnet peer"
       kill -TERM "$TS_PID" 2>/dev/null || true
       TS_PID=""
@@ -159,9 +159,9 @@ else
     fi
   fi
 
-  if [ -n "$TS_PID" ]; then
+  if [[ -n "$TS_PID" ]]; then
     PANEL_TS_IP="$(/usr/bin/tailscale --socket=/var/run/tailscale/tailscaled.sock ip -4 2>/dev/null | head -1)"
-    if [ -n "$PANEL_TS_IP" ]; then
+    if [[ -n "$PANEL_TS_IP" ]]; then
       echo "[bigscale] panel reachable on tailnet at $PANEL_TS_IP (hostname: $PANEL_HOSTNAME)"
       printf '%s\n' "$PANEL_TS_IP" > /data/panel-tailnet-ip
     else
@@ -170,7 +170,7 @@ else
     # In userspace mode, the panel needs `tailscale serve` to forward inbound
     # tailnet TCP/3000 to the local panel listener. In TUN mode the panel
     # binds 0.0.0.0:3000 directly and this is a no-op.
-    if [ -n "$TS_TUN_FLAG" ]; then
+    if [[ -n "$TS_TUN_FLAG" ]]; then
       /usr/bin/tailscale --socket=/var/run/tailscale/tailscaled.sock \
           serve --bg --tcp=3000 tcp://127.0.0.1:3000 2>/dev/null \
         || echo "[bigscale] could not configure tailscale serve — peers may not reach :3000 in userspace mode"

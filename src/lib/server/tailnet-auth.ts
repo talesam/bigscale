@@ -19,7 +19,7 @@ interface NodeListResponse {
 function isTailnetAddr(ip: string): boolean {
 	if (ip.startsWith('100.')) {
 		// CGNAT range used by tailscale: 100.64.0.0/10
-		const second = parseInt(ip.split('.')[1] ?? '', 10);
+		const second = Number.parseInt(ip.split('.')[1] ?? '', 10);
 		return second >= 64 && second <= 127;
 	}
 	// IPv6 ULA range used by tailscale: fd7a:115c:a1e0::/48
