@@ -56,3 +56,18 @@ export interface Policy {
 	policy: string;
 	updatedAt?: string;
 }
+
+export type InviteStatus = 'active' | 'used' | 'expired' | 'revoked';
+
+export interface Invite {
+	id: string;
+	group: string | null;
+	mutual: boolean;
+	note: string;
+	createdAt: string;
+	expiresAt: string;
+	maxUses: number;
+	uses: { user: string; at: string }[];
+	revokedAt?: string;
+	status: InviteStatus;
+}

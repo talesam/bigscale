@@ -1,0 +1,141 @@
+import { BIGSCALE_PUBLIC_URL } from './config.js';
+import { createUser, deleteUser, displayNameFrom, mintKey, nameConflict, userNameFrom } from './enroll.js';
+import { lookup, recordUse, reserve, type LookupFailure } from './invite-store.js';
+import { addMember, referencedUsers } from './policy-groups.js';
+
+// Redeeming an invite: the only unauthenticated write the panel offers. The
+// invite token *is* the credential, so everything here is about not letting
+// it be guessed, reused past its limit, or leave half-created accounts.
+
+// Tokens are 32 random bytes (base64url, 43 chars). Bound what we accept so a
+// junk request can't make us hash megabytes.
+const TOKEN_RE = /^[A-Za-z0-9_-]{20,128}$/;
+
+// Brake on wrong tokens, per client. Guessing 256-bit tokens is hopeless
+// anyway; this just keeps a scanner from turning the endpoint into load. Per
+// client so one noisy source can't lock everyone else out of joining.
+const FAIL_WINDOW_MS = 60_000;
+const FAIL_LIMIT = 30;
+// Bound memory under a flood of distinct sources.
+const MAX_TRACKED = 10_000;
+const failures = new Map<string, number[]>();
+
+function recent(client: string, now: number): number[] {
+	const list = (failures.get(client) ?? []).filter((t) => now - t < FAIL_WINDOW_MS);
+	if (list.length) failures.set(client, list);
+	else failures.delete(client);
+	return list;
+}
+
+function throttled(client: string, now: number): boolean {
+	return recent(client, now).length >= FAIL_LIMIT;
+}
+
+function noteFailure(client: string, now: number): void {
+	if (failures.size >= MAX_TRACKED && !failures.has(client)) {
+		for (const [k, v] of failures) if (!v.some((t) => now - t < FAIL_WINDOW_MS)) failures.delete(k);
+		if (failures.size >= MAX_TRACKED) failures.clear();
+	}
+	failures.set(client, [...recent(client, now), now]);
+}
+
+export type JoinError =
+	| 'invalid_request'
+	| 'invalid_name'
+	| 'name_taken'
+	| 'too_many_attempts'
+	| 'server_error'
+	| LookupFailure;
+
+export interface JoinFailure {
+	status: number;
+	error: JoinError;
+	suggestion?: string;
+}
+
+export interface JoinSuccess {
+	authkey: string;
+	server_url: string;
+	user: string;
+	group: string | null;
+}
+
+const STATUS: Record<LookupFailure, number> = { unknown: 404, expired: 410, used: 410, revoked: 410 };
+
+function failed(client: string, reason: LookupFailure): JoinFailure {
+	noteFailure(client, Date.now());
+	return { status: STATUS[reason], error: reason };
+}
+
+/** What the landing page and the app show before the person commits. */
+export function checkInvite(
+	client: string,
+	token: unknown
+): JoinFailure | { group: string | null; expiresAt: string } {
+	if (typeof token !== 'string' || !TOKEN_RE.test(token)) return { status: 400, error: 'invalid_request' };
+	if (throttled(client, Date.now())) return { status: 429, error: 'too_many_attempts' };
+	const found = lookup(token);
+	if ('reason' in found) return failed(client, found.reason);
+	return { group: found.invite.group, expiresAt: found.invite.expiresAt };
+}
+
+export async function redeemInvite(
+	client: string,
+	token: unknown,
+	rawName: unknown
+): Promise<JoinFailure | JoinSuccess> {
+	if (typeof token !== 'string' || !TOKEN_RE.test(token) || typeof rawName !== 'string') {
+		return { status: 400, error: 'invalid_request' };
+	}
+	if (throttled(client, Date.now())) return { status: 429, error: 'too_many_attempts' };
+
+	const user = userNameFrom(rawName);
+	if (!user) return { status: 400, error: 'invalid_name' };
+
+	const held = reserve(token);
+	if ('reason' in held) return failed(client, held.reason);
+	const { invite, release } = held;
+
+	let userId: string | null = null;
+	let undoGroup: (() => Promise<void>) | null = null;
+	try {
+		// A name the policy already mentions would inherit that access.
+		const conflict = await nameConflict(user, await referencedUsers());
+		if (conflict.taken) return { status: 409, error: 'name_taken', suggestion: conflict.suggestion };
+
+		userId = await createUser(user, displayNameFrom(rawName));
+		if (invite.group) undoGroup = await addMember(invite.group, user, invite.mutual);
+		const authkey = await mintKey(userId);
+
+		recordUse(invite.id, user);
+		userId = null; // committed: nothing to roll back
+		return { authkey, server_url: BIGSCALE_PUBLIC_URL, user, group: invite.group };
+	} catch (e) {
+		console.error('[join] redeem failed:', (e as Error).message);
+		return { status: 502, error: 'server_error' };
+	} finally {
+		if (userId !== null) {
+			// Roll back so a retry with the same name works and no orphan
+			// user is left behind. Best effort: report, don't throw.
+			if (undoGroup) await undoGroup().catch((e) => console.error('[join] undo group:', e));
+			await deleteUser(userId).catch((e) => console.error('[join] undo user:', e));
+		}
+		release();
+	}
+}
+
+/**
+ * Who is calling, for the per-client brake. Behind nginx-proxy-manager the
+ * socket peer is the proxy, which overwrites X-Real-IP with the real client
+ * address. Only used for rate limiting — never for authentication (the
+ * tailnet endpoints keep using the socket address).
+ */
+export function clientKey(request: Request, getClientAddress: () => string): string {
+	const real = request.headers.get('x-real-ip')?.trim();
+	if (real) return real;
+	try {
+		return getClientAddress();
+	} catch {
+		return 'unknown';
+	}
+}

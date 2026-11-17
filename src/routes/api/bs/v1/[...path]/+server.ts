@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { validateSession } from '$lib/server/session.js';
 import { bs } from '$lib/server/bigscale-server.js';
 import { deleteDeviceMeta, getAllDeviceMeta } from '$lib/server/device-meta.js';
+import { readPolicyRaw, withPolicyLock } from '$lib/server/policy-groups.js';
 import type { RequestHandler } from './$types';
 
 // Path looks like `node/<id>` (no trailing segments) — admin deleted the
@@ -124,7 +125,29 @@ async function proxy(method: string, path: string, request: Request, cookies: Pa
 		if (text) body = JSON.parse(text);
 	}
 
-	const res = await bs(method, path, body, Object.keys(query).length ? query : undefined);
+	// Policy saves share the invite redeem's lock, and a save based on an
+	// older version is refused: otherwise an editor left open would silently
+	// drop members that invites added in the meantime.
+	const base = request.headers.get('x-policy-base');
+	const send = () => bs(method, path, body, Object.keys(query).length ? query : undefined);
+	let res: Response | null;
+	if (method === 'PUT' && path === 'policy') {
+		res = await withPolicyLock(async () => {
+			if (base) {
+				const { updatedAt } = await readPolicyRaw();
+				if (updatedAt && updatedAt !== base) return null;
+			}
+			return send();
+		});
+		if (!res) {
+			return new Response(JSON.stringify({ message: 'policy_changed' }), {
+				status: 409,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+	} else {
+		res = await send();
+	}
 	let data = await res.text();
 
 	if (method === 'GET' && res.ok) {

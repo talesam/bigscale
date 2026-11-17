@@ -5,7 +5,8 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = async ({ cookies, url }) => {
 	const p = url.pathname;
 
-	if (p === '/login' || p.startsWith('/api/')) return {};
+	// /join is the public invite landing page: the invitee has no panel account.
+	if (p === '/login' || p === '/join' || p.startsWith('/api/')) return {};
 
 	const token = cookies.get('bs_session');
 	const session = token ? getSession(token) : null;

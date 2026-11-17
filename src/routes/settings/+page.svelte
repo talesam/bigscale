@@ -24,6 +24,9 @@
 
 	// ACL
 	let policyText = '';
+	// Version the editor loaded; sent back on save so a concurrent change
+	// (an invite adding a member) isn't silently overwritten.
+	let policyBase: string | undefined;
 	let policyLoading = false;
 	let policySaving = false;
 	let policyDirty = false;
@@ -119,6 +122,7 @@
 		policyError = '';
 		try {
 			const p = await getPolicy();
+			policyBase = p.updatedAt;
 			const raw = p.policy ?? '';
 			// Pretty-print if the policy came in minified (ignore on failure — may be HuJSON with comments).
 			try {
@@ -138,12 +142,16 @@
 		policySaving = true;
 		policyError = '';
 		try {
-			const p = await setPolicy(policyText);
+			const p = await setPolicy(policyText, policyBase);
 			policyText = p.policy ?? policyText;
+			// Without a version in the answer, skip the check next time rather
+			// than compare against a stale one.
+			policyBase = p.updatedAt;
 			policyDirty = false;
 			addToast($t('settings.acl.saved'));
 		} catch (e: unknown) {
-			policyError = e instanceof Error ? e.message : $t('common.error');
+			const msg = e instanceof Error ? e.message : '';
+			policyError = msg === 'policy_changed' ? $t('settings.acl.changedMeanwhile') : msg || $t('common.error');
 			addToast(policyError, 'error');
 		} finally {
 			policySaving = false;

@@ -1,15 +1,21 @@
-import type { ApiKey, Device, Policy, PreAuthKey, Route, User } from './types';
+import type { ApiKey, Device, Invite, Policy, PreAuthKey, Route, User } from './types';
 
 // All calls go through our backend proxy — API key never leaves the server
 const BASE = '/api/bs/v1';
 
-async function req<T = unknown>(method: string, path: string, body?: unknown, query?: Record<string, string>): Promise<T> {
+async function req<T = unknown>(
+	method: string,
+	path: string,
+	body?: unknown,
+	query?: Record<string, string>,
+	headers: Record<string, string> = {}
+): Promise<T> {
 	const url = new URL(BASE + '/' + path, location.origin);
 	if (query) Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
 
 	const res = await fetch(url.toString(), {
 		method,
-		headers: { 'Content-Type': 'application/json' },
+		headers: { 'Content-Type': 'application/json', ...headers },
 		credentials: 'include',
 		body: body !== undefined ? JSON.stringify(body) : undefined
 	});
@@ -180,8 +186,13 @@ export async function getPolicy(): Promise<Policy> {
 	}
 }
 
-export async function setPolicy(policy: string): Promise<Policy> {
-	return req<Policy>('PUT', 'policy', { policy });
+/**
+ * Save the policy. `base` is the `updatedAt` it was loaded at: the server
+ * refuses the save (message `policy_changed`) if someone — e.g. an invite
+ * adding a member — changed it since.
+ */
+export async function setPolicy(policy: string, base?: string): Promise<Policy> {
+	return req<Policy>('PUT', 'policy', { policy }, undefined, base ? { 'X-Policy-Base': base } : {});
 }
 
 // ─── System ───────────────────────────────────────────────────────────────────
@@ -200,4 +211,50 @@ export async function getHealth(): Promise<HealthResponse> {
 	} catch {
 		return { ok: false };
 	}
+}
+
+// ─── Invites ──────────────────────────────────────────────────────────────────
+
+async function invitesReq<T>(method: string, path: string, body?: unknown): Promise<T> {
+	const res = await fetch(`/api/invites${path}`, {
+		method,
+		headers: { 'Content-Type': 'application/json' },
+		credentials: 'include',
+		body: body !== undefined ? JSON.stringify(body) : undefined
+	});
+	if (res.status === 401) {
+		location.href = '/login';
+		throw new Error('Session expired');
+	}
+	const data = (await res.json().catch(() => ({}))) as T & { error?: string; message?: string };
+	if (!res.ok) throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
+	return data;
+}
+
+export async function getInvites(): Promise<{ invites: Invite[]; groups: string[]; groupsError?: string }> {
+	return invitesReq('GET', '');
+}
+
+export async function createInvite(opts: {
+	group: string | null;
+	mutual: boolean;
+	note: string;
+	maxUses: number;
+	validDays: number;
+}): Promise<{ invite: Invite; token: string }> {
+	return invitesReq('POST', '', opts);
+}
+
+export async function revokeInvite(id: string): Promise<void> {
+	await invitesReq('DELETE', `/${encodeURIComponent(id)}`);
+}
+
+/** Shareable link for an invite token. The token rides in the fragment, which browsers never send to a server. */
+export function inviteLink(token: string): string {
+	return `${location.origin}/join#${token}`;
+}
+
+/** Deep link that opens BigLace straight into the join dialog. */
+export function inviteAppLink(token: string, panel = location.origin): string {
+	return `biglace://join?panel=${encodeURIComponent(panel)}&invite=${encodeURIComponent(token)}`;
 }
