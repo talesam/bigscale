@@ -4,7 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { allNodes, SYSTEM_USERS } from './accounts.js';
 import { ADMIN_DATA_DIR } from './config.js';
 import { groupsFor } from './member-groups.js';
-import { addMember } from './policy-groups.js';
+import { ADMIN_GROUP, addMember, readPolicy } from './policy-groups.js';
+import { getSettings } from './network-settings.js';
 
 // "Join my group?" — a member asks people already on the network to come
 // into a group they're in; nothing changes until the person accepts.
@@ -77,19 +78,48 @@ export interface Person {
 }
 
 /**
- * People on the network `caller` could ask into `group`: every account with
- * a device (system users and the caller left out), marked when already in
- * the group or already asked. Online first, then by name.
+ * People `user` is already connected to: everyone in a group with them (the
+ * administrators' group aside) and everyone a rule pairs them with (each
+ * member invite creates one between inviter and newcomer).
+ */
+export async function contactsOf(user: string): Promise<Set<string>> {
+	const { policy } = await readPolicy();
+	const me = `${user}@`;
+	const out = new Set<string>();
+	for (const [k, members] of Object.entries(policy.groups)) {
+		if (k === `group:${ADMIN_GROUP}` || !members.includes(me)) continue;
+		for (const m of members) if (m.endsWith('@')) out.add(m.slice(0, -1));
+	}
+	const userOf = (ref: string) => (ref.endsWith('@:*') ? ref.slice(0, -3) : ref.endsWith('@') ? ref.slice(0, -1) : null);
+	for (const r of policy.acls) {
+		const refs = [...r.src, ...r.dst];
+		if (!refs.some((x) => userOf(x) === user)) continue;
+		for (const x of refs) {
+			const u = userOf(x);
+			if (u) out.add(u);
+		}
+	}
+	out.delete(user);
+	return out;
+}
+
+/**
+ * People `caller` could ask into `group`, marked when already in the group
+ * or already asked; online first, then by name. Depending on the network's
+ * settings, everyone with a device or only the caller's contacts (anyone
+ * else can still be asked by exact name, see ask()).
  */
 export async function candidates(caller: string, group: string): Promise<Person[]> {
 	const mine = (await groupsFor(caller)).find((g) => g.name === group);
 	if (!mine) throw new RequestFailure('not_in_group');
 	const members = new Set(mine.members);
 	const pending = new Set(live().filter((r) => r.group === group).map((r) => r.to));
+	const visible = getSettings().directory === 'contacts' ? await contactsOf(caller) : null;
 	const people = new Map<string, boolean>();
 	for (const n of await allNodes()) {
 		const user = n.user?.name;
 		if (!user || SYSTEM_USERS.has(user) || user === caller) continue;
+		if (visible && !visible.has(user)) continue;
 		people.set(user, (people.get(user) ?? false) || n.online === true);
 	}
 	return [...people]
@@ -103,7 +133,9 @@ export async function candidates(caller: string, group: string): Promise<Person[
 
 /**
  * `caller` asks each of `users` into `group`. People already in it or
- * already asked are skipped. Returns how many requests were created.
+ * already asked are skipped, and so are names nobody has: the answer must
+ * not tell whether an account exists (that would undo `contacts`). Returns
+ * how many requests were created.
  */
 export async function ask(caller: string, group: string, users: string[]): Promise<number> {
 	const mine = (await groupsFor(caller)).find((g) => g.name === group);
@@ -111,8 +143,8 @@ export async function ask(caller: string, group: string, users: string[]): Promi
 	const known = new Set(
 		(await allNodes()).map((n) => n.user?.name).filter((u): u is string => !!u && !SYSTEM_USERS.has(u))
 	);
-	const wanted = [...new Set(users)].filter((u) => u !== caller && !mine.members.includes(u));
-	if (wanted.some((u) => !known.has(u))) throw new RequestFailure('no_such_user');
+	const asked = [...new Set(users)].filter((u) => u !== caller && !mine.members.includes(u));
+	const wanted = asked.filter((u) => known.has(u));
 
 	const list = live();
 	const fresh = wanted.filter((u) => !list.some((r) => r.group === group && r.to === u));
@@ -120,15 +152,14 @@ export async function ask(caller: string, group: string, users: string[]): Promi
 		throw new RequestFailure('too_many');
 	}
 	const now = new Date().toISOString();
-	let made = 0;
 	for (const to of fresh) {
 		// A full inbox just doesn't get more; the others still go.
 		if (list.filter((r) => r.to === to).length >= MAX_PENDING_TO) continue;
 		list.push({ id: randomBytes(12).toString('hex'), group, from: caller, to, createdAt: now });
-		made++;
 	}
 	persist(list);
-	return made;
+	// Counted as asked whether or not the name exists (see above).
+	return asked.length;
 }
 
 /** Requests waiting for `user` to answer. */

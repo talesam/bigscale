@@ -13,6 +13,7 @@
 	import DateTimePicker from '$lib/components/DateTimePicker.svelte';
 	import AclEditor from '$lib/components/AclEditor.svelte';
 	import AdminsCard from '$lib/components/AdminsCard.svelte';
+	import NetworkSettingsCard from '$lib/components/NetworkSettingsCard.svelte';
 
 	let apiKeys: ApiKey[] = [];
 	let keysLoading = false;
@@ -235,6 +236,8 @@
 			</div>
 		</div>
 	</div>
+
+	<NetworkSettingsCard />
 
 	<AdminsCard />
 

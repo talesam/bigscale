@@ -57,7 +57,7 @@ export interface Policy {
 	updatedAt?: string;
 }
 
-export type InviteStatus = 'active' | 'used' | 'expired' | 'revoked';
+export type InviteStatus = 'pending' | 'active' | 'used' | 'expired' | 'revoked';
 
 export interface Invite {
 	id: string;

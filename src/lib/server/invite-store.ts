@@ -51,12 +51,15 @@ export interface Invite {
 	/** Who invited, when created by a member: the newcomer and the inviter
 	 * get a rule letting them reach each other. */
 	inviter?: Inviter;
+	/** Waiting for an administrator (network set to approve member invites):
+	 * the link doesn't work until then. */
+	pendingApproval?: boolean;
 }
 
 /** What the admin UI gets — never the hash. */
 export type InviteView = Omit<Invite, 'hash'> & { status: InviteStatus };
 
-export type InviteStatus = 'active' | 'used' | 'expired' | 'revoked';
+export type InviteStatus = 'pending' | 'active' | 'used' | 'expired' | 'revoked';
 
 let cache: Invite[] | null = null;
 // Uses being redeemed right now, so two people racing on the last slot can't
@@ -88,6 +91,7 @@ export function hashToken(token: string): string {
 
 export function statusOf(inv: Invite, now = Date.now()): InviteStatus {
 	if (inv.revokedAt) return 'revoked';
+	if (inv.pendingApproval) return 'pending';
 	if (inv.uses.length >= inv.maxUses) return 'used';
 	if (inv.expiresAt && Date.parse(inv.expiresAt) <= now) return 'expired';
 	return 'active';
@@ -100,7 +104,8 @@ function view(inv: Invite): InviteView {
 
 function prune(list: Invite[], now: number): Invite[] {
 	return list.filter((inv) => {
-		if (statusOf(inv, now) === 'active') return true;
+		const status = statusOf(inv, now);
+		if (status === 'active' || status === 'pending') return true;
 		const finishedAt = Math.max(
 			Date.parse(inv.expiresAt ?? '') || 0,
 			Date.parse(inv.revokedAt ?? '') || 0,
@@ -129,6 +134,8 @@ export interface NewInvite {
 	/** null: no expiry. */
 	validDays: number | null;
 	inviter?: Inviter;
+	/** Usable only once an administrator approves it. */
+	needsApproval?: boolean;
 }
 
 /** Create an invite. Returns the public view plus the secret token (shown once). */
@@ -147,6 +154,7 @@ export function createInvite(opts: NewInvite): { invite: InviteView; token: stri
 		uses: []
 	};
 	if (opts.inviter) inv.inviter = opts.inviter;
+	if (opts.needsApproval) inv.pendingApproval = true;
 	const list = load();
 	list.push(inv);
 	persist(list);
@@ -167,12 +175,22 @@ export function revokeInvite(id: string, onlyBy?: string): boolean {
 	return true;
 }
 
+/** An administrator lets a member's invite work. */
+export function approveInvite(id: string): boolean {
+	const inv = load().find((i) => i.id === id);
+	if (!inv || !inv.pendingApproval || inv.revokedAt) return false;
+	delete inv.pendingApproval;
+	persist(load());
+	return true;
+}
+
 /** Revoke every pending invite a member created (the member was removed). */
 export function revokeInvitesBy(user: string): number {
 	const now = new Date().toISOString();
 	let n = 0;
 	for (const inv of load()) {
-		if (inv.inviter?.user === user && statusOf(inv) === 'active') {
+		const status = statusOf(inv);
+		if (inv.inviter?.user === user && (status === 'active' || status === 'pending')) {
 			inv.revokedAt = now;
 			n++;
 		}
@@ -181,7 +199,7 @@ export function revokeInvitesBy(user: string): number {
 	return n;
 }
 
-export type LookupFailure = 'unknown' | 'expired' | 'used' | 'revoked';
+export type LookupFailure = 'unknown' | 'expired' | 'used' | 'revoked' | 'pending';
 
 /** Find the invite a token belongs to, or why it can't be used. Doesn't count in-flight redeems. */
 export function lookup(token: string): { invite: Invite } | { reason: LookupFailure } {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { createInvite, getInvites, inviteAppLink, inviteLink, revokeInvite } from '$lib/api';
+	import { approveInvite, createInvite, getInvites, inviteAppLink, inviteLink, revokeInvite } from '$lib/api';
 	import { addToast } from '$lib/stores';
 	import { t, locale } from '$lib/i18n';
 	import type { Invite } from '$lib/types';
@@ -33,6 +33,21 @@
 
 	$: newGroupValid = groupChoice !== NEW_GROUP || GROUP_RE.test(newGroup.trim().toLowerCase());
 	$: activeCount = invites.filter((i) => i.status === 'active').length;
+	$: pendingCount = invites.filter((i) => i.status === 'pending').length;
+	let approving = '';
+
+	async function doApprove(inv: Invite) {
+		approving = inv.id;
+		try {
+			await approveInvite(inv.id);
+			addToast($t('invites.toast.approved'));
+			await load();
+		} catch (e: unknown) {
+			addToast(e instanceof Error ? e.message : $t('common.error'), 'error');
+		} finally {
+			approving = '';
+		}
+	}
 
 	onMount(load);
 
@@ -104,6 +119,7 @@
 	}
 
 	const BADGE: Record<Invite['status'], string> = {
+		pending: 'badge-warning',
 		active: 'badge-success',
 		used: 'badge-info',
 		expired: 'badge-ghost',
@@ -140,6 +156,10 @@
 		<span>{$t('invites.howItWorks')}</span>
 	</div>
 
+	{#if pendingCount}
+		<div class="alert alert-warning text-sm" role="status"><span>{$t('invites.pendingBanner', { n: pendingCount })}</span></div>
+	{/if}
+
 	{#if groupsError}
 		<div class="alert alert-warning text-sm"><span>{$t('invites.groupsError', { error: groupsError })}</span></div>
 	{/if}
@@ -168,7 +188,10 @@
 							{#if inv.note}<span class="text-base-content/60 text-sm truncate">— {inv.note}</span>{/if}
 							{#if inv.inviter}<span class="badge badge-ghost badge-sm">{$t('invites.by', { user: inv.inviter.user })}</span>{/if}
 							<span class="flex-1"></span>
-							{#if inv.status === 'active'}
+							{#if inv.status === 'pending'}
+								<button class="btn btn-success btn-xs" disabled={approving === inv.id} on:click={() => doApprove(inv)}>{$t('invites.approve')}</button>
+								<button class="btn btn-ghost btn-xs text-error" on:click={() => (revokeTarget = inv)}>{$t('invites.reject')}</button>
+							{:else if inv.status === 'active'}
 								<button class="btn btn-ghost btn-xs text-error" on:click={() => (revokeTarget = inv)}>{$t('invites.revoke')}</button>
 							{/if}
 						</div>

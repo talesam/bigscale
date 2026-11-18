@@ -276,6 +276,11 @@ export async function revokeInvite(id: string): Promise<void> {
 	await invitesReq('DELETE', `/${encodeURIComponent(id)}`);
 }
 
+/** Let a member's invite work (network set to approve member invites). */
+export async function approveInvite(id: string): Promise<void> {
+	await invitesReq('POST', `/${encodeURIComponent(id)}`, { approve: true });
+}
+
 /** Shareable link for an invite token. The token rides in the fragment, which browsers never send to a server. */
 export function inviteLink(token: string): string {
 	return `${location.origin}/join#${token}`;

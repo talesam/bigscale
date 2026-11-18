@@ -67,7 +67,7 @@ export interface JoinSuccess {
 	reclaim: string;
 }
 
-const STATUS: Record<LookupFailure, number> = { unknown: 404, expired: 410, used: 410, revoked: 410 };
+const STATUS: Record<LookupFailure, number> = { unknown: 404, expired: 410, used: 410, revoked: 410, pending: 403 };
 
 function failed(client: string, reason: LookupFailure): JoinFailure {
 	noteFailure(client, Date.now());
