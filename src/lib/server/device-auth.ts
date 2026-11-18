@@ -122,6 +122,13 @@ function dropEnrollment(keyId: string): void {
 	writeJson(ENROLL_PATH, store);
 }
 
+/** Pinned key of a node, if any (for peers checking who's calling them). */
+export function pinnedKey(nodeId: string): { pub: string; via: string } | null {
+	const store = load();
+	if (!Object.hasOwn(store, nodeId)) return null;
+	return { pub: store[nodeId].pub, via: store[nodeId].via ?? 'proof' };
+}
+
 /** The node is gone: its pinned key goes too. */
 export function forgetDeviceKey(nodeId: string): void {
 	const store = load();
