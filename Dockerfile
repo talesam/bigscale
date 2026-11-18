@@ -11,7 +11,11 @@
 # revision so this image is fully self-contained and reproducible.
 
 # ─── Stage 1: build the server binary from Headscale source ──────────────────
-FROM golang:1.25-alpine AS server-bin
+# Runs on the build machine's own architecture and cross-compiles (pure Go,
+# CGO off): building arm64 on an amd64 machine needs no emulation here.
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS server-bin
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 # Pin the upstream Headscale revision we build from. Bump deliberately —
 # upstream may introduce breaking config/API changes between minor versions.
@@ -21,7 +25,7 @@ RUN apk add --no-cache git ca-certificates
 WORKDIR /build
 RUN git clone --depth 1 --branch "${HEADSCALE_VERSION}" \
         https://github.com/juanfont/headscale.git . \
- && CGO_ENABLED=0 GOOS=linux go build \
+ && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build \
         -trimpath \
         -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=${HEADSCALE_VERSION}" \
         -o /bigscale ./cmd/headscale
@@ -76,6 +80,10 @@ WORKDIR /app
 COPY --from=panel-build /app/build         ./build
 COPY --from=panel-build /app/package.json  ./
 COPY --from=panel-build /app/node_modules  ./node_modules
+
+# Template for the coordinator config, written on first boot from
+# BIGSCALE_PUBLIC_URL when /etc/bigscale/config.yaml doesn't exist yet.
+COPY config/config.yaml /usr/share/bigscale/config.example.yaml
 
 # Entrypoint
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh

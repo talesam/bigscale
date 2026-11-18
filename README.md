@@ -5,72 +5,97 @@
 <h1 align="center">BigScale</h1>
 
 <p align="center">
-  Self-hosted mesh VPN coordinator (Tailscale-compatible) with a modern admin web panel.
+  <b>Your own private network, on your own server.</b><br/>
+  A self-hosted mesh VPN coordinator (Tailscale-compatible) with a friendly web panel —<br/>
+  invites, groups, voice rooms and remote desktop through the <a href="https://github.com/big-comm/biglace">BigLace</a> app.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/SvelteKit-FF3E00?style=flat&logo=svelte&logoColor=white" alt="SvelteKit" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/TailwindCSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white" alt="TailwindCSS" />
-  <img src="https://img.shields.io/badge/DaisyUI-5A0EF8?style=flat&logo=daisyui&logoColor=white" alt="DaisyUI" />
-  <img src="https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/Node.js-339933?style=flat&logo=nodedotjs&logoColor=white" alt="Node.js" />
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker" />
+  <a href="https://hub.docker.com/r/talesam/bigscale"><img src="https://img.shields.io/docker/v/talesam/bigscale?sort=semver&label=Docker%20Hub&logo=docker&logoColor=white" alt="Docker Hub version" /></a>
+  <a href="https://hub.docker.com/r/talesam/bigscale"><img src="https://img.shields.io/docker/pulls/talesam/bigscale?logo=docker&logoColor=white" alt="Docker pulls" /></a>
+  <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-informational" alt="amd64 | arm64" />
   <img src="https://img.shields.io/badge/Engine-Headscale-2D3036?style=flat" alt="Powered by Headscale" />
   <img src="https://img.shields.io/badge/License-MIT-22c55e?style=flat" alt="License: MIT" />
 </p>
 
 ---
 
-BigScale is a self-hosted VPN coordinator that bundles a Tailscale-compatible engine with a modern web panel for managing users, devices and authentication keys — all in a single Docker image. The engine is built from the open-source [Headscale](https://github.com/juanfont/headscale) source (pinned per release; see `HEADSCALE_VERSION` in the `Dockerfile`) and shipped under the `bigscale` binary name.
+BigScale bundles a Tailscale-compatible coordinator — built from the open-source [Headscale](https://github.com/juanfont/headscale) source, pinned per release — with a web panel, in **one Docker image**. Run it on any small VPS (or a Raspberry Pi) and you have a private network for your family, friends, company or community: every device reaches the others directly and encrypted (WireGuard), wherever they are, and **you** decide who gets in.
 
-Pair it with the desktop client **[BigLace](https://github.com/big-comm/biglace)** to connect Linux machines to your network.
+People join with the desktop app **[BigLace](https://github.com/big-comm/biglace)**: they open an invite link, type their name, and they're in — no accounts to create by hand, no keys to copy. Any Tailscale client also works.
 
-## Features
+## What you get
 
-- **Self-hosted VPN coordinator** — you own your data, no dependency on Tailscale Inc.
-- **Single Docker image** — server, panel and bootstrap all in one container.
-- **Modern web panel** (SvelteKit + DaisyUI) with light/dark themes, fully responsive.
-- **i18n**: English, Portuguese (Brazil), Spanish.
-- **Username/password login** — first login forces the default password to be changed.
-- **Full management**: users, devices, preauth keys, API keys, routes, tags.
-- **Visual ACL editor** with a fallback advanced JSON (HuJSON) mode.
-- **Server health badge** in the sidebar with live polling.
-- **Zero-config**: one command brings the stack up — API key and admin password are generated/rotated by the container itself.
-- **Panel-as-tailnet-peer** — the panel registers itself on its own tailnet (hostname `panel`, system user `_panel`) so [BigLace](https://github.com/big-comm/biglace) clients can authenticate to panel-side endpoints by tunnel identity, without trusting `X-Forwarded-For`.
-- **Per-device metadata** (`os_user`) advertised by BigLace at connect-time and merged into the device listing — used by other peers to prefill the SSH user when targeting a device.
+**For the person running the server**
+- **One container, one command** — coordinator, panel, built-in relay (DERP/STUN) and bootstrap in a single image for `amd64` and `arm64`.
+- **Zero configuration files** — on first start the container writes its own config from your domain and prints a random admin password.
+- **Web panel** (English, Português, Español; light/dark): users, devices, access rules (visual ACL editor), invites, API keys.
+- **Network settings** — choose who may invite new people (any member · any member with your approval · administrators only), whether members see everyone or only their own contacts, and the invite limits.
+- **Several administrators** — give trusted people the admin role; they open the panel from BigLace under their own name, without sharing a password.
 
-## Quick start
+**For the people on the network** (with BigLace)
+- **Invites by link or QR code** — whoever joins reaches only the person who invited them (and, if chosen, one group). Separate circles stay separate: your friend and your sister don't see each other unless you put them in the same group.
+- **Groups** — anyone creates a group (family, work, a class) and invites people already on the network; they accept or decline.
+- **Voice rooms** — every group has a voice room; the sound goes straight between the participants, never through the server.
+- **Remote desktop** — see and control another computer of the network (X11 and Wayland, hardware-accelerated), always with the owner's permission.
+- **Device keys** — every BigLace install signs its requests with its own key, so nobody can act on behalf of another device, even from inside the network.
 
-### Requirements
-- Docker + Docker Compose v2
-- (Production) a public domain with HTTPS through a reverse proxy (Caddy, Nginx, Traefik, …)
+## Quick start (5 minutes)
 
-### Option A — pre-built image (fastest)
-
-Pull the published multi-arch image (`linux/amd64` + `linux/arm64`):
+You need: a Linux server with Docker, a domain name pointing to it (e.g. `vpn.example.com`), and these ports open — **TCP 80 and 443**, **UDP 3478**.
 
 ```bash
-docker pull talesam/bigscale:latest
-# or, from GitHub Container Registry:
-docker pull ghcr.io/talesam/bigscale:latest
+mkdir bigscale && cd bigscale
+curl -fsSLO https://raw.githubusercontent.com/talesam/bigscale/master/examples/caddy/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/talesam/bigscale/master/examples/caddy/Caddyfile
+echo "BIGSCALE_DOMAIN=vpn.example.com" > .env      # ← your domain
+
+docker compose up -d
+docker compose logs bigscale | grep -A6 "First start"   # shows the admin password
 ```
 
-Then drop it into your own `docker-compose.yml` (or use the one in this repo, which already references `bigscale:latest`).
+Open `https://vpn.example.com`, sign in as **admin** with the password from the log, and choose your own password. Caddy takes care of the HTTPS certificate.
 
-### Option B — build from source
+Already running a reverse proxy (Nginx Proxy Manager, Traefik, …)? Use [`examples/existing-proxy/docker-compose.yml`](examples/existing-proxy/docker-compose.yml) and see [Reverse proxy](#reverse-proxy) for the routes.
+
+### Bring people in
+
+1. Install [BigLace](https://github.com/big-comm/biglace) on your computer and join with an invite from the panel (**Invites → New invite**). Add yourself to the administrators in **Settings → Administrators** if you like managing from the app.
+2. From then on anyone on the network can invite others from BigLace (unless you restrict it in **Settings → Network**): **Invites → Invite someone**, then send the link or QR code.
+3. Groups, voice rooms and remote desktop are all in BigLace.
+
+Plain Tailscale clients work too: create a user and an auth key in the panel, then `tailscale up --login-server=https://vpn.example.com --authkey=<key>`.
+
+### Image tags
+
+| Tag | What it is |
+|---|---|
+| `talesam/bigscale:latest` | Latest release |
+| `talesam/bigscale:X.Y.Z` | A specific release (pin this in production if you prefer explicit upgrades) |
+
+Also published at `ghcr.io/talesam/bigscale`. Both are multi-arch (`linux/amd64`, `linux/arm64`).
+
+### Updating and backups
+
+Everything that matters lives in the mounted folders (`./config` and `./data`):
+
+```bash
+docker compose stop bigscale
+tar czf bigscale-backup-$(date +%F).tgz config data     # backup
+docker compose pull && docker compose up -d             # update
+```
+
+To move to another server, copy the folder and start it there (keep the same domain).
+
+### Build from source
 
 ```bash
 git clone https://github.com/talesam/bigscale.git
 cd bigscale
-docker compose up -d
+BIGSCALE_PUBLIC_URL=http://localhost:18080 docker compose up -d --build
 ```
 
-The first build compiles the VPN engine from the upstream Headscale source (pinned via `HEADSCALE_VERSION` in the `Dockerfile`) and bundles it with the panel into a single image — no external Headscale image is pulled at runtime.
-
-That's it. Open the panel and sign in with **admin** / **bigscale** — you will be required to change the password immediately. The internal API key is generated automatically by the container on first boot and stored in the `bigscale-panel-data` volume.
-
-In local development, the panel listens on **3000** and the engine on **18080** (via `docker-compose.override.yml`). In production, see [Reverse proxy](#reverse-proxy).
+The first build compiles the coordinator from the pinned Headscale source. Locally the panel listens on **3000** and the coordinator on **18080** (via `docker-compose.override.yml`).
 
 ## Reverse proxy
 
@@ -95,7 +120,7 @@ vpn.your-domain.com {
 }
 ```
 
-Each proxy host stays trivial: a single forward, zero custom locations. The trade-off is one extra TLS certificate.
+Each proxy host stays trivial: a single forward, zero custom locations. The trade-off is one extra TLS certificate. Set `BIGSCALE_PUBLIC_URL=https://vpn.your-domain.com` and `BIGSCALE_PANEL_URL=https://panel.your-domain.com` so invite links point at the panel.
 
 ### Option 2 — Single domain with path-based routing
 
@@ -151,7 +176,7 @@ Keep the regular `/derp/` (with trailing slash) as a normal Custom Location — 
 
 ## Embedded DERP relay & STUN (UDP 3478)
 
-BigScale ships with Headscale's embedded DERP relay enabled by default (`derp.server.enabled: true` in `config.yaml`). The relay listens on **UDP 3478** for STUN. **This port is not exposed by the default `docker-compose.yml`** — clients can connect to the coordinator and see each other in the panel, but peer-to-peer traffic will silently fail.
+BigScale ships with Headscale's embedded DERP relay enabled by default (`derp.server.enabled: true` in `config.yaml`). The relay listens on **UDP 3478** for STUN. If that port isn't reachable from the internet, clients still connect and see each other in the panel, but direct peer-to-peer traffic silently fails.
 
 ### What goes wrong if UDP 3478 is closed
 
@@ -162,7 +187,7 @@ BigScale ships with Headscale's embedded DERP relay enabled by default (`derp.se
 
 ### Fix
 
-1. **Publish UDP 3478** in `docker-compose.yml`:
+1. **Publish UDP 3478** in `docker-compose.yml` (the examples already do):
    ```yaml
    services:
      bigscale:
@@ -219,55 +244,31 @@ Common mistakes that the editor will save without warning:
 
 `bigscale policy check -f policy.json` reports "Policy is valid" for all of the above (it's a syntactic check, not semantic), so a green light from `policy check` does not guarantee that the references resolve to actual users. If peers appear online in the panel but `tailscale status` does not list them as peers, the most likely cause is a malformed user reference in a `src`/group.
 
-## Panel as a tailnet peer
+## Panel as a network peer
 
-On first boot the entrypoint registers the panel itself as a peer of its own tailnet:
+On first boot the entrypoint registers the panel itself as a node of its own network (system user **`_panel`**, node **`panel`**). BigLace talks to the panel over the encrypted network for everything a member does — invites, groups, voice room presence, signing in to the admin panel — and every such request is **signed with the device's own key** (Ed25519). The panel pins each device's key when the device enrolls, so a request is accepted only from the device it claims to come from; the network address alone is never taken as proof.
 
-- A reserved system user **`_panel`** is created (idempotent).
-- A short-lived preauth key is minted and consumed by `tailscaled` (running inside the container) to bring up the **`panel`** node.
-- State persists at `/var/lib/tailscale` (bind-mounted to `./data/tailscale` by `docker-compose.yml`), so subsequent boots reuse the existing NodeKey — no new key is minted.
+`_panel` and the `panel` node are reserved: the panel hides them and refuses to delete them. Don't remove them with the CLI either — that breaks every BigLace feature above until the container restarts.
 
-Why: panel-side endpoints that authenticate by **tunnel identity** (e.g. `POST /api/devices/me/os-user`) need the real peer IP. Behind any reverse proxy that strips it (NPM, Caddy, …), trusting `X-Forwarded-For` would be spoofable. With the panel itself on the tailnet, BigLace clients reach it on its tailnet IP (e.g. `panel.<base_domain>:3000`) and the source IP **is** the proof of identity — looked up in the engine's node table.
+Container requirements (already in the examples): `cap_add: [NET_ADMIN]`, `devices: [/dev/net/tun]` and the `./data/tailscale` volume. Without `/dev/net/tun` the container falls back to userspace networking (slower, still works).
 
-**`_panel` and the `panel` node are reserved.** The panel UI hides them from the user / device listings, and the `/api/bs/v1/*` proxy returns **403** on any attempt to delete them. Removing them via the CLI (`bigscale users delete _panel` / `bigscale nodes delete <id>`) would orphan the persisted `tailscaled` state and break tunnel-identity auth until the container is restarted; **don't**.
-
-The panel's own tailnet IP is exposed at `/data/panel-tailnet-ip` inside the container for debugging.
-
-Container requirements (already wired in `docker-compose.yml`):
-
-```yaml
-cap_add:
-  - NET_ADMIN
-devices:
-  - /dev/net/tun:/dev/net/tun
-volumes:
-  - ./data/tailscale:/var/lib/tailscale
-```
-
-If `/dev/net/tun` is unavailable, the entrypoint falls back to userspace networking + `tailscale serve` (still works, slightly slower). Set `BIGSCALE_DISABLE_TAILNET_PEER=true` to skip the whole step (panel still serves the cookie-auth UI but tunnel-identity endpoints will reject all requests).
-
-## Environment variables (all optional)
+## Environment variables
 
 | Variable | Description | Default |
 |---|---|---|
-| `ADMIN_USERNAME` | Initial panel username | `admin` |
-| `ADMIN_PASSWORD` | Initial panel password | `bigscale` |
-| `COOKIE_SECURE`  | Set to `true` when serving the panel over HTTPS | `false` |
-| `BIGSCALE_PUBLIC_URL` | Public URL clients reach the coordinator through (must match `server_url` in `config.yaml`); falls back to `http://localhost:8080` | _(unset)_ |
-| `BIGSCALE_PANEL_HOSTNAME` | Hostname under which the panel registers as a tailnet peer | `panel` |
-| `BIGSCALE_DISABLE_TAILNET_PEER` | `true` to skip registering the panel on the tailnet | `false` |
+| `BIGSCALE_PUBLIC_URL` | **Required on first start.** Public address clients use, e.g. `https://vpn.example.com`. Written into the generated `config.yaml` as `server_url` | _(unset)_ |
+| `BIGSCALE_BASE_DOMAIN` | MagicDNS domain for device names (first start only) | `bigscale.net` |
+| `COOKIE_SECURE` | `true` when the panel is served over HTTPS (it should be) | `false` |
+| `ADMIN_USERNAME` | Panel admin user created on first start | `admin` |
+| `ADMIN_PASSWORD` | Initial admin password. Unset → a random one is generated, printed in the log and saved to `/data/initial-admin-password` | _(random)_ |
+| `BIGSCALE_PANEL_URL` | Public panel address used in invite links, if different from `BIGSCALE_PUBLIC_URL` | `BIGSCALE_PUBLIC_URL` |
+| `BIGSCALE_PANEL_HOSTNAME` | Name of the panel's own node on the network | `panel` |
+| `BIGSCALE_DISABLE_TAILNET_PEER` | `true` to keep the panel off the network (BigLace invites, groups and rooms then stop working) | `false` |
+| `TZ` | Time zone for logs | `UTC` |
 
-`ADMIN_USERNAME` / `ADMIN_PASSWORD` are seeds only — once the admin changes the password from the panel, the value persisted in the `bigscale-panel-data` volume is what counts.
+The admin user and password are seeds only: once changed in the panel, the value saved in `./data/panel` is what counts. The coordinator API key is generated by the container and stays inside it (`/data/api-key`); it never reaches the browser.
 
-The engine API key is generated automatically by the entrypoint and stored in `/data/api-key` inside the container (volume `bigscale-panel-data`). It never reaches the browser.
-
-## Usage
-
-1. Open the panel on your domain.
-2. Sign in with `admin` / `bigscale` (you will be forced to change the password immediately).
-3. In **Users**, create a user and generate an **authentication key (preauth key)**.
-4. Share the public engine URL and the auth key with the end user.
-5. The user pastes the URL + auth key into the **BigLace** app (or runs `tailscale up --login-server=<URL> --authkey=<KEY>`).
+What the panel stores in `./data/panel`: `admin.json`, `invites.json`, `accounts.json`, `member-groups.json`, `group-requests.json`, `network-settings.json`, device keys and metadata. Back it up together with `./data/server` (the coordinator's database and keys).
 
 ## Architecture
 

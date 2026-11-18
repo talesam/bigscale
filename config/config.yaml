@@ -1,8 +1,11 @@
-# BigScale Server Configuration
-# Rename this file to config.yaml and edit as needed
+# BigScale coordinator configuration.
+#
+# You don't need to write this file: on first start the container creates it
+# from this template, using BIGSCALE_PUBLIC_URL as server_url. Edit the
+# generated copy (in your mounted config directory) only for advanced needs.
 
-# Public URL of the server (must match BIGSCALE_PUBLIC_URL in docker-compose)
-server_url: https://biglace.biglinux.com.br
+# Public URL clients connect to (same value as BIGSCALE_PUBLIC_URL).
+server_url: https://vpn.example.com
 
 listen_addr: 0.0.0.0:8080
 grpc_listen_addr: 0.0.0.0:50443

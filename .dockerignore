@@ -15,6 +15,7 @@ build
 # Runtime data that should never enter the image
 data
 config
+!config/config.yaml
 
 # CI/dev only
 docker-compose.yml

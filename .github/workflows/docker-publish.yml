@@ -1,6 +1,8 @@
 name: Build and publish image
 
-# Publishes ghcr.io/talesam/bigscale on push to master and on version tags.
+# Publishes ghcr.io/talesam/bigscale (and talesam/bigscale on Docker Hub,
+# when the DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets exist) on push to
+# master and on version tags.
 # - master              → :latest + :sha-<short>
 # - tag v0.1.0          → :0.1.0 + :latest
 # - manual              → :latest
@@ -18,6 +20,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -35,11 +39,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Gather metadata
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ghcr.io/${{ github.repository_owner }}/bigscale
+          images: |
+            ghcr.io/${{ github.repository_owner }}/bigscale
+            name=docker.io/talesam/bigscale,enable=${{ env.DOCKERHUB_USERNAME != '' }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag

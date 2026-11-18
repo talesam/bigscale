@@ -1,0 +1,7 @@
+# One domain for everything: the VPN protocol paths go to the coordinator
+# (8080), the rest to the panel (3000). Caddy gets the HTTPS certificate.
+{$BIGSCALE_DOMAIN} {
+	@engine path /key /machine/* /ts2021 /derp /derp/*
+	reverse_proxy @engine bigscale:8080
+	reverse_proxy bigscale:3000
+}

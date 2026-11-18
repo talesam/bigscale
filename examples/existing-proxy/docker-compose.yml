@@ -1,0 +1,29 @@
+# BigScale behind a reverse proxy you already run (Nginx Proxy Manager,
+# Traefik, Nginx, …) on the same Docker network.
+#
+# Route these paths to bigscale:8080 and everything else to bigscale:3000,
+# with WebSockets enabled (see the README, "Reverse proxy"):
+#   /key   /machine/*   /ts2021   /derp (exact)   /derp/*
+services:
+  bigscale:
+    image: talesam/bigscale:latest
+    container_name: bigscale
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    environment:
+      BIGSCALE_PUBLIC_URL: https://vpn.example.com   # ← your domain
+      COOKIE_SECURE: "true"
+    volumes:
+      - ./config:/etc/bigscale
+      - ./data/server:/var/lib/bigscale
+      - ./data/panel:/data
+      - ./data/tailscale:/var/lib/tailscale
+    ports:
+      - "3478:3478/udp"
+    expose: ["3000", "8080"]
+    networks: [proxy]
+
+networks:
+  proxy:
+    external: true   # the network your proxy is on: docker network ls

@@ -1,0 +1,43 @@
+# BigScale + Caddy (automatic HTTPS) on one server — the simplest setup.
+#
+#   1. Point a DNS name (e.g. vpn.example.com) at this server.
+#   2. Open TCP 80 and 443 and UDP 3478 on the firewall.
+#   3. Put your domain in .env (see .env.example), then:
+#        docker compose up -d
+#        docker compose logs bigscale | grep -A6 "First start"   # admin password
+#   4. Open https://vpn.example.com and sign in.
+services:
+  bigscale:
+    image: talesam/bigscale:latest
+    container_name: bigscale
+    restart: unless-stopped
+    # tailscaled inside the container (the panel joins its own network).
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    environment:
+      BIGSCALE_PUBLIC_URL: https://${BIGSCALE_DOMAIN:?set BIGSCALE_DOMAIN in .env}
+      COOKIE_SECURE: "true"
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./config:/etc/bigscale
+      - ./data/server:/var/lib/bigscale
+      - ./data/panel:/data
+      - ./data/tailscale:/var/lib/tailscale
+    ports:
+      - "3478:3478/udp"   # STUN for the built-in relay (direct connections)
+    expose: ["3000", "8080"]
+
+  caddy:
+    image: caddy:2
+    container_name: bigscale-caddy
+    restart: unless-stopped
+    environment:
+      BIGSCALE_DOMAIN: ${BIGSCALE_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+    depends_on: [bigscale]

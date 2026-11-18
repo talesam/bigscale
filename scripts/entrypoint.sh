@@ -25,6 +25,47 @@ shutdown() {
 }
 trap shutdown TERM INT
 
+# ─── First boot: configuration and admin password ───────────────────────────
+# A fresh install needs no files: the coordinator config is generated from
+# BIGSCALE_PUBLIC_URL (the address BigLace and Tailscale clients use), and
+# the panel admin gets a random password printed below — never a fixed
+# default on a server that may already be on the internet.
+CONFIG="${HEADSCALE_CONFIG:-/etc/bigscale/config.yaml}"
+if [[ ! -s "$CONFIG" ]]; then
+  if [[ ! "${BIGSCALE_PUBLIC_URL:-}" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]]; then
+    echo "[bigscale] no $CONFIG yet: set BIGSCALE_PUBLIC_URL to this server's public address"
+    echo "[bigscale] (for example https://vpn.example.com) and start the container again."
+    exit 1
+  fi
+  mkdir -p "$(dirname "$CONFIG")"
+  URL="${BIGSCALE_PUBLIC_URL%/}"
+  sed -e "s#^server_url:.*#server_url: ${URL}#" \
+      -e "s#^  base_domain:.*#  base_domain: ${BIGSCALE_BASE_DOMAIN:-bigscale.net}#" \
+      /usr/share/bigscale/config.example.yaml > "$CONFIG"
+  echo "[bigscale] wrote $CONFIG for $URL"
+else
+  CONF_URL="$(sed -n 's/^server_url:[[:space:]]*//p' "$CONFIG" | tr -d '"'"'"' ')"
+  if [[ -n "${BIGSCALE_PUBLIC_URL:-}" && "${BIGSCALE_PUBLIC_URL%/}" != "${CONF_URL%/}" ]]; then
+    echo "[bigscale] warning: BIGSCALE_PUBLIC_URL (${BIGSCALE_PUBLIC_URL}) differs from server_url in $CONFIG (${CONF_URL})"
+  fi
+fi
+
+ADMIN_FILE="${ADMIN_DATA_DIR:-/data}/admin.json"
+if [[ ! -e "$ADMIN_FILE" && -z "${ADMIN_PASSWORD:-}" ]]; then
+  mkdir -p "$(dirname "$ADMIN_FILE")"
+  ADMIN_PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -d '/+=' | head -c 20)"
+  export ADMIN_PASSWORD
+  PW_FILE="${ADMIN_DATA_DIR:-/data}/initial-admin-password"
+  ( umask 077; printf '%s\n' "$ADMIN_PASSWORD" > "$PW_FILE" )
+  echo "[bigscale] ================================================================"
+  echo "[bigscale]  First start. Sign in to the panel with:"
+  echo "[bigscale]    user:     ${ADMIN_USERNAME:-admin}"
+  echo "[bigscale]    password: ${ADMIN_PASSWORD}"
+  echo "[bigscale]  You'll choose a new password right away. (Also saved in"
+  echo "[bigscale]  $PW_FILE — delete it once you've signed in.)"
+  echo "[bigscale] ================================================================"
+fi
+
 echo "[bigscale] starting VPN coordinator..."
 /usr/local/bin/bigscale serve &
 SERVER_PID=$!
