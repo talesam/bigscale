@@ -31,17 +31,17 @@ RUN git clone --depth 1 --branch "${HEADSCALE_VERSION}" \
         -o /bigscale ./cmd/headscale
 
 # ─── Stage 2: panel build ────────────────────────────────────────────────────
-FROM node:20-alpine AS panel-build
+# Also on the build machine's own architecture: the output (build/) is plain
+# JavaScript with every dependency bundled in, the same for amd64 and arm64,
+# so there's nothing to emulate — emulated Node under QEMU is slow and
+# crashes on some CI runners ("Illegal instruction").
+FROM --platform=$BUILDPLATFORM node:20-alpine AS panel-build
 WORKDIR /app
 
 COPY package*.json ./
 # `--ignore-scripts` keeps third-party install scripts from running during
-# `npm ci`, but esbuild's postinstall is the step that picks the
-# arch-specific binary. Under buildx + QEMU, skipping it leaves the x64
-# binary in place even when targeting arm64, and `vite build` crashes with
-# "installed esbuild for another platform". `npm rebuild` runs the install
-# scripts only for the listed packages, so we keep the safety net for the
-# rest of the dependency tree.
+# `npm ci`; `npm rebuild` then runs them only for the build tools that need
+# their platform binary (esbuild, lightningcss).
 RUN npm ci --ignore-scripts \
  && npm rebuild esbuild lightningcss
 
@@ -79,7 +79,7 @@ RUN ln -sf /usr/local/bin/bigscale /usr/local/bin/headscale
 WORKDIR /app
 COPY --from=panel-build /app/build         ./build
 COPY --from=panel-build /app/package.json  ./
-COPY --from=panel-build /app/node_modules  ./node_modules
+# No node_modules: adapter-node bundles every runtime dependency into build/.
 
 # Template for the coordinator config, written on first boot from
 # BIGSCALE_PUBLIC_URL when /etc/bigscale/config.yaml doesn't exist yet.
