@@ -1,6 +1,6 @@
 import { BIGSCALE_PUBLIC_URL } from './config.js';
 import { createUser, deleteUser, displayNameFrom, mintKey, nameConflict, userIdOf, userNameFrom } from './enroll.js';
-import { lookup, recordUse, reserve, type LookupFailure } from './invite-store.js';
+import { lookup, recordUse, reserve, type Invite, type LookupFailure } from './invite-store.js';
 import { addMember, addPair, groupsOf, referencedUsers } from './policy-groups.js';
 import { getAccount, reclaimMatches, recordAccount, rotateReclaim } from './account-store.js';
 import { deleteNode, nodesOf } from './accounts.js';
@@ -246,5 +246,53 @@ export function clientKey(request: Request, getClientAddress: () => string): str
 		return getClientAddress();
 	} catch {
 		return 'unknown';
+	}
+}
+
+export type GroupLinkError = JoinError | 'nothing_to_join' | 'already_member';
+
+/**
+ * Someone already on the network opens an invite link: there's no account
+ * to create, so the link only brings them into its group (and, for a
+ * member's invite, lets them and the inviter reach each other). Opening it
+ * from their signed-in BigLace is their consent. With `preview`, only says
+ * what it would do.
+ */
+export async function redeemForMember(
+	user: string,
+	token: unknown,
+	preview: boolean
+): Promise<{ status: number; error: GroupLinkError } | { group: string | null; invited_by: string | null }> {
+	if (typeof token !== 'string' || !TOKEN_RE.test(token)) return { status: 400, error: 'invalid_request' };
+	const client = `member:${user}`;
+	if (throttled(client, Date.now())) return { status: 429, error: 'too_many_attempts' };
+	const held: { invite: Invite; release?: () => void } | { reason: LookupFailure } = preview
+		? lookup(token)
+		: reserve(token);
+	if ('reason' in held) return failed(client, held.reason);
+	const { invite, release } = held;
+	try {
+		const inviter = invite.inviter ?? null;
+		if (inviter) {
+			const id = await userIdOf(inviter.user);
+			if (id === null || (inviter.userId && id !== inviter.userId)) return failed(client, 'revoked');
+			if (inviter.user === user) return { status: 409, error: 'already_member' };
+		}
+		let group = invite.group;
+		if (group && inviter && !(await groupsOf(inviter.user)).includes(group)) group = null;
+		const mine = await groupsOf(user);
+		if (group && mine.includes(group)) return { status: 409, error: 'already_member' };
+		if (!group && !inviter) return { status: 409, error: 'nothing_to_join' };
+		const result = { group, invited_by: inviter?.user ?? null };
+		if (preview) return result;
+		if (group) await addMember(group, user, invite.mutual);
+		if (inviter) await addPair(inviter.user, user);
+		recordUse(invite.id, user);
+		return result;
+	} catch (e) {
+		console.error('[join] member redeem failed:', (e as Error).message);
+		return { status: 502, error: 'server_error' };
+	} finally {
+		release?.();
 	}
 }

@@ -7,6 +7,7 @@ import { userIdOf } from './enroll.js';
 import { revokeInvitesBy } from './invite-store.js';
 import { removeUserFromPolicy } from './policy-groups.js';
 import { onOwnerGone } from './member-groups.js';
+import { forgetUser as forgetRequests } from './group-requests.js';
 import { dropSessionsOf } from './session.js';
 
 // Removing people and freeing their names: what happens to a user once it
@@ -42,6 +43,7 @@ export async function deleteNode(id: string): Promise<void> {
  */
 export async function afterUserDeleted(user: string): Promise<void> {
 	revokeInvitesBy(user);
+	forgetRequests(user);
 	forgetAccount(user);
 	dropSessionsOf(user);
 	await removeUserFromPolicy(user).catch((e) =>
