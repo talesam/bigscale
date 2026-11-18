@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { getAccount, keepAccount } from '$lib/server/account-store.js';
 import { deleteNode, nodesOf, purgeIfEmpty } from '$lib/server/accounts.js';
 import { jsonBody, requireMember } from '$lib/server/member.js';
+import { leaveAll } from '$lib/server/rooms.js';
 import type { RequestHandler } from './$types';
 
 // POST /api/me/leave { delete_account?: boolean }
@@ -39,6 +40,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const deleteAccount = wantsDelete && others === 0;
 	if (invited && !deleteAccount) keepAccount(me.user, KEEP_DAYS);
 
+	leaveAll(me.nodeId);
 	setTimeout(() => {
 		void (async () => {
 			try {
