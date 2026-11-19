@@ -11,7 +11,7 @@ const MAX_TRIES = 40;
 
 async function panelRule(attempt = 1): Promise<void> {
 	try {
-		if (await ensurePanelReachable()) console.log('[bigscale] policy: devices may now reach the panel API (port 3000)');
+		if (await ensurePanelReachable()) console.log('[bigscale] policy: panel API reachable (port 3000), everyone reaches their own devices');
 	} catch (e) {
 		if (attempt >= MAX_TRIES) {
 			console.error('[bigscale] policy: could not add the panel rule:', (e as Error).message);

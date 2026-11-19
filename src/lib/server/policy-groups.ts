@@ -226,6 +226,17 @@ function isPanelRule(r: AclRule): boolean {
 	return r.action === 'accept' && r.src.length === 1 && r.src[0] === '*' && r.dst.length === 1 && r.dst[0] === PANEL_DST;
 }
 
+// Everyone reaches their own devices (laptop ↔ desktop), with or without
+// any group or invite: Tailscale's own default, which Headscale (0.27+)
+// understands. Without it an account with no rule yet — an admin invite
+// without a group — couldn't even reach its own machines.
+const SELF_SRC = 'autogroup:member';
+const SELF_DST = 'autogroup:self:*';
+
+function isSelfRule(r: AclRule): boolean {
+	return r.action === 'accept' && r.src.length === 1 && r.src[0] === SELF_SRC && r.dst.length === 1 && r.dst[0] === SELF_DST;
+}
+
 function isAgentRule(r: AclRule): boolean {
 	return r.action === 'accept' && r.src.length === 1 && r.src[0] === '_panel@' && r.dst.length === 1 && r.dst[0] === AGENT_DST;
 }
@@ -239,6 +250,10 @@ function addPanelRules(policy: AclPolicy): boolean {
 	}
 	if (!policy.acls.some(isAgentRule)) {
 		policy.acls.push({ action: 'accept', src: ['_panel@'], dst: [AGENT_DST] });
+		changed = true;
+	}
+	if (!policy.acls.some(isSelfRule)) {
+		policy.acls.push({ action: 'accept', src: [SELF_SRC], dst: [SELF_DST] });
 		changed = true;
 	}
 	return changed;
