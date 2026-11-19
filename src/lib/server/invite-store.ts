@@ -51,6 +51,9 @@ export interface Invite {
 	/** Who invited, when created by a member: the newcomer and the inviter
 	 * get a rule letting them reach each other. */
 	inviter?: Inviter;
+	/** Who made it, when that isn't an inviter: an administrator's invite to
+	 * a network of the newcomer's own (listed and cancellable by them). */
+	createdBy?: string;
 	/** Waiting for an administrator (network set to approve member invites):
 	 * the link doesn't work until then. */
 	pendingApproval?: boolean;
@@ -134,6 +137,7 @@ export interface NewInvite {
 	/** null: no expiry. */
 	validDays: number | null;
 	inviter?: Inviter;
+	createdBy?: string;
 	/** Usable only once an administrator approves it. */
 	needsApproval?: boolean;
 }
@@ -154,6 +158,7 @@ export function createInvite(opts: NewInvite): { invite: InviteView; token: stri
 		uses: []
 	};
 	if (opts.inviter) inv.inviter = opts.inviter;
+	if (opts.createdBy) inv.createdBy = opts.createdBy;
 	if (opts.needsApproval) inv.pendingApproval = true;
 	const list = load();
 	list.push(inv);
@@ -163,12 +168,14 @@ export function createInvite(opts: NewInvite): { invite: InviteView; token: stri
 
 /** Invites a member created, newest first (for their BigLace). */
 export function listInvitesBy(user: string): InviteView[] {
-	return listInvites().filter((i) => i.inviter?.user === user);
+	return listInvites().filter((i) => i.inviter?.user === user || i.createdBy === user);
 }
 
 /** Revoke an invite; with `onlyBy`, only if that member created it. */
 export function revokeInvite(id: string, onlyBy?: string): boolean {
-	const inv = load().find((i) => i.id === id && (onlyBy === undefined || i.inviter?.user === onlyBy));
+	const inv = load().find(
+		(i) => i.id === id && (onlyBy === undefined || i.inviter?.user === onlyBy || i.createdBy === onlyBy)
+	);
 	if (!inv || inv.revokedAt) return false;
 	inv.revokedAt = new Date().toISOString();
 	persist(load());

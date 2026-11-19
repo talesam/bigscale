@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 // Invites created by a member from BigLace, over the tailnet.
 //
 // GET  /api/me/invites → { invites, groups }  (own invites; groups I'm in)
-// POST /api/me/invites { group?, note? } → { invite, token, link }
+// POST /api/me/invites { group?, note?, isolated? } → { invite, token, link }
 //
 // Who may invite is the network's choice (Settings → Network): any member,
 // any member with an administrator approving each link, or administrators
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const me = await requireMember(request, getClientAddress);
 	if (me instanceof Response) return me;
 
-	const body = jsonBody<{ group?: unknown; note?: unknown }>(me.body);
+	const body = jsonBody<{ group?: unknown; note?: unknown; isolated?: unknown }>(me.body);
 	if (!body) return json({ error: 'invalid_request' }, { status: 400 });
 
 	// Without any access rules everyone already reaches everyone, so a
@@ -78,8 +78,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	if (settings.invites === 'admins' && !admin) return json({ error: 'admins_only' }, { status: 403 });
 
+	// Administrators can invite someone to a network of their own: no group,
+	// and no link to whoever invited them (they see only their own devices,
+	// and whoever they invite in turn).
+	const isolated = body.isolated === true;
+	if (isolated && !admin) return json({ error: 'not_admin' }, { status: 403 });
+
 	let group: string | null = null;
-	if (typeof body.group === 'string' && body.group.trim()) {
+	if (!isolated && typeof body.group === 'string' && body.group.trim()) {
 		// Exact match against the policy's own spelling (no case folding).
 		group = body.group.trim().replace(/^group:/, '');
 		let mine: string[];
@@ -104,9 +110,10 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		note,
 		maxUses: 1,
 		validDays: null,
-		inviter: inviterOf(me),
+		inviter: isolated ? undefined : inviterOf(me),
+		createdBy: isolated ? me.user : undefined,
 		// Administrators' own invites never wait for approval.
-		needsApproval: settings.invites === 'approval' && !admin
+		needsApproval: !isolated && settings.invites === 'approval' && !admin
 	});
 	const now = Date.now();
 	created.set(me.user, [...(created.get(me.user) ?? []), now]);
