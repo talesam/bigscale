@@ -10,7 +10,7 @@
 	export let data: { signedInAs?: string | null } = {};
 
 	// Pages shown without the admin chrome (and without health polling).
-	$: isLogin = $page.url.pathname === '/login' || $page.url.pathname === '/join';
+	$: isLogin = $page.url.pathname === '/login' || $page.url.pathname === '/join' || $page.url.pathname === '/pair';
 
 	let serverHealth: { ok: boolean; panelVersion?: string; engineVersion?: string } = { ok: false };
 	let healthTimer: ReturnType<typeof setInterval> | null = null;
