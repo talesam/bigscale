@@ -355,4 +355,9 @@ export const es: Record<string, string> = {
 	'network.limits.dailyNetwork': "Invitaciones de miembros por día (toda la red)",
 	'network.save': "Guardar",
 	'network.saved': "Configuración de la red guardada.",
+	'pair.title': "Conectar tu teléfono",
+	'pair.body': "Este código añade tu teléfono a tu cuenta de BigLace. Debe leerlo la app BigLace, no la cámara.",
+	'pair.step1': "Instala BigLace en el teléfono.",
+	'pair.download': "Descargar",
+	'pair.step2': "Ábrela, toca “Escanear código QR” y apunta al código en el ordenador.",
 };
