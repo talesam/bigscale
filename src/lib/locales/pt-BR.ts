@@ -360,4 +360,9 @@ export const ptBR: Record<string, string> = {
 	'pair.step1': "Instale o BigLace no celular.",
 	'pair.download': "Baixar",
 	'pair.step2': "Abra, toque em “Ler QR code” e aponte para o código no computador.",
+	'link.title': "Conectar um computador",
+	'link.body': "Este código adiciona um computador a uma conta do BigLace. Ele precisa ser lido pelo BigLace num aparelho que já está na conta, não pela câmera.",
+	'link.step1': "Abra o BigLace no seu celular (ou em outro aparelho seu).",
+	'link.download': "Baixar",
+	'link.step2': "Toque em “Ler QR code”, aponte para o código no computador e confirme.",
 };

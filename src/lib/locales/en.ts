@@ -360,4 +360,9 @@ export const en: Record<string, string> = {
 	'pair.step1': "Install BigLace on the phone.",
 	'pair.download': "Download",
 	'pair.step2': "Open it, tap “Scan QR code” and point it at the code on the computer.",
+	'link.title': "Connect a computer",
+	'link.body': "This code adds a computer to a BigLace account. It has to be read by BigLace on a device already in the account, not by the camera.",
+	'link.step1': "Open BigLace on your phone (or another device of yours).",
+	'link.download': "Download",
+	'link.step2': "Tap “Scan QR code”, point it at the code on the computer and confirm.",
 };

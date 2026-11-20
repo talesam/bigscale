@@ -81,20 +81,115 @@ export async function redeemPairing(
 		return { status: 410, error: 'expired' };
 	}
 	pending.delete(token);
+	return keyFor(p.user, rawHost, deviceKey);
+}
+
+/**
+ * A pre-auth key of `user` for a new device (pinned to its device key). A
+ * device of that account with the same name is replaced: the same phone or
+ * computer, joining again.
+ */
+async function keyFor(user: string, rawHost: unknown, deviceKey: unknown): Promise<PairFailure | PairSuccess> {
 	const hostname = typeof rawHost === 'string' && HOST_RE.test(rawHost) ? rawHost : null;
 	try {
-		const id = await userIdOf(p.user);
+		const id = await userIdOf(user);
 		if (id === null) return { status: 410, error: 'expired' };
 		if (hostname) {
-			for (const n of await nodesOf(p.user)) {
+			for (const n of await nodesOf(user)) {
 				if (n.givenName === hostname || n.name === hostname) await deleteNode(n.id);
 			}
 		}
 		const minted = await mintKey(id);
 		pinForEnrollment(minted.id, devicePub(deviceKey));
-		return { authkey: minted.key, server_url: BIGSCALE_PUBLIC_URL, user: p.user };
+		return { authkey: minted.key, server_url: BIGSCALE_PUBLIC_URL, user };
 	} catch (e) {
 		console.error('[pair] failed:', (e as Error).message);
 		return { status: 502, error: 'server_error' };
 	}
+}
+
+// ─── The other way round, as Telegram does ─────────────────────────────────
+//
+// A computer that isn't in any account yet shows a QR code (`code`); a device
+// already in an account scans it, sees the computer's name and approves. The
+// computer, asking all along with a secret of its own (`poll`) that never
+// leaves it, then gets a key of that account. The code alone gets nothing.
+
+const MAX_LINKS = 2000;
+const STARTS_PER_MINUTE = 10;
+
+interface LinkRequest {
+	poll: string;
+	hostname: string | null;
+	deviceKey: unknown;
+	expires: number;
+	/** Set once approved, handed to the computer at its next poll. */
+	result?: PairSuccess;
+}
+
+/** By code. */
+const links = new Map<string, LinkRequest>();
+const starts = new Map<string, number[]>();
+
+function sweepLinks(now: number): void {
+	for (const [c, l] of links) if (l.expires <= now) links.delete(c);
+}
+
+/** A computer asks to join some account: its code to show and its secret to poll with. */
+export function startLink(
+	client: string,
+	rawHost: unknown,
+	deviceKey: unknown
+): { code: string; poll: string; expires: number } | PairFailure {
+	const now = Date.now();
+	sweepLinks(now);
+	const recent = (starts.get(client) ?? []).filter((t) => now - t < 60_000);
+	if (recent.length >= STARTS_PER_MINUTE || links.size >= MAX_LINKS) return { status: 429, error: 'too_many_attempts' };
+	if (starts.size > 10_000) starts.clear();
+	starts.set(client, [...recent, now]);
+	const hostname = typeof rawHost === 'string' && HOST_RE.test(rawHost) ? rawHost : null;
+	const code = randomBytes(32).toString('base64url');
+	const poll = randomBytes(32).toString('base64url');
+	const expires = now + TTL_MS;
+	links.set(code, { poll, hostname, deviceKey, expires });
+	return { code, poll, expires };
+}
+
+function waiting(code: unknown, now: number): LinkRequest | null {
+	if (typeof code !== 'string' || !TOKEN_RE.test(code)) return null;
+	sweepLinks(now);
+	const l = links.get(code);
+	return l && !l.result ? l : null;
+}
+
+/** What a scanned code asks for: the computer's name (null: not offered). */
+export function peekLink(code: unknown): { hostname: string | null } | null {
+	const l = waiting(code, Date.now());
+	return l ? { hostname: l.hostname } : null;
+}
+
+/** A device of `user` approved the scanned code: the computer joins that account. */
+export async function approveLink(user: string, code: unknown): Promise<{ hostname: string | null } | PairFailure> {
+	const l = waiting(code, Date.now());
+	if (!l) return { status: 410, error: 'expired' };
+	const r = await keyFor(user, l.hostname, l.deviceKey);
+	if ('error' in r) return r;
+	l.result = r;
+	return { hostname: l.hostname };
+}
+
+/** The computer asks whether it was approved: its key once, then the request is gone. */
+export function pollLink(client: string, poll: unknown): PairSuccess | 'pending' | PairFailure {
+	const now = Date.now();
+	if (typeof poll !== 'string' || !TOKEN_RE.test(poll)) return { status: 400, error: 'invalid_request' };
+	if (throttled(client, now)) return { status: 429, error: 'too_many_attempts' };
+	sweepLinks(now);
+	for (const [code, l] of links) {
+		if (l.poll !== poll) continue;
+		if (!l.result) return 'pending';
+		links.delete(code);
+		return l.result;
+	}
+	noteFailure(client, now);
+	return { status: 410, error: 'expired' };
 }
