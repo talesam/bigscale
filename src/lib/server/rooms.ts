@@ -53,6 +53,14 @@ export function join(group: string, p: Omit<Participant, 'joinedAt' | 'seen'>): 
 	return [...members.values()];
 }
 
+/** Group `from` is called `to` now: whoever is in its room stays. */
+export function renameRoom(from: string, to: string): void {
+	const members = rooms.get(from);
+	if (!members) return;
+	rooms.delete(from);
+	rooms.set(to, members);
+}
+
 export function leave(group: string, nodeId: string): void {
 	rooms.get(group)?.delete(nodeId);
 	if (rooms.get(group)?.size === 0) rooms.delete(group);

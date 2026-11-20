@@ -3,7 +3,10 @@ import { dirname, resolve } from 'node:path';
 import { json } from '@sveltejs/kit';
 import type { AclPolicy, AclRule } from '$lib/acl.js';
 import { ADMIN_DATA_DIR } from './config.js';
+import { renameGroupInInvites } from './invite-store.js';
+import { renameGroupInRequests } from './group-requests.js';
 import { ADMIN_GROUP, GROUP_NAME_RE, readPolicy, withPolicyLock, writePolicy } from './policy-groups.js';
+import { renameRoom } from './rooms.js';
 
 // Groups people create themselves from BigLace ("família", "trabalho"…).
 //
@@ -23,6 +26,8 @@ export const MAX_OWNED = 10;
 interface Meta {
 	owner: string;
 	createdAt: string;
+	/** Names it had before, oldest first: BigLace moves their conversations over. */
+	former?: string[];
 }
 type Store = Record<string, Meta>;
 
@@ -113,6 +118,8 @@ export interface GroupView {
 	kind: 'member' | 'network';
 	owner: string | null;
 	members: string[];
+	/** Names the group had before (member groups renamed by their owner). */
+	former: string[];
 }
 
 /** Groups `user` belongs to (the admin group excluded), with their members. */
@@ -128,7 +135,8 @@ export async function groupsFor(user: string): Promise<GroupView[]> {
 				name,
 				kind: m ? ('member' as const) : ('network' as const),
 				owner: m?.owner ?? null,
-				members: members.filter((x) => x.endsWith('@')).map((x) => x.slice(0, -1))
+				members: members.filter((x) => x.endsWith('@')).map((x) => x.slice(0, -1)),
+				former: m?.former ?? []
 			};
 		})
 		.sort((a, b) => a.name.localeCompare(b.name));
@@ -152,7 +160,7 @@ export function createGroup(owner: string, rawName: unknown): Promise<GroupView>
 		const store = load();
 		store[name] = { owner, createdAt: new Date().toISOString() };
 		persist(store);
-		return { name, kind: 'member', owner, members: [owner] };
+		return { name, kind: 'member', owner, members: [owner], former: [] };
 	});
 }
 
@@ -176,6 +184,46 @@ export function deleteGroup(caller: string, name: string): Promise<void> {
 		// reaches the printer"): deleting it would make the policy invalid.
 		if (referencedElsewhere(policy, name)) throw new GroupFailure('in_use');
 		await dropGroup(policy, name);
+	});
+}
+
+/**
+ * The owner gives their group a new name. Its members, its rule, its pending
+ * invites and requests and its voice room move along; the old name stays in
+ * `former` so BigLace keeps the group's conversation.
+ */
+export function renameGroup(caller: string, name: string, rawName: unknown): Promise<GroupView> {
+	return withPolicyLock(async () => {
+		const to = typeof rawName === 'string' ? rawName.trim().toLowerCase() : '';
+		if (!GROUP_NAME_RE.test(to) || to === ADMIN_GROUP) throw new GroupFailure('invalid_name');
+		const { policy } = await readPolicy();
+		const m = liveMeta(policy, name);
+		if (!m) throw new GroupFailure('not_member_group');
+		if (m.owner !== caller) throw new GroupFailure('not_owner');
+		if (to === name) throw new GroupFailure('invalid_name');
+		if (key(to) in policy.groups || meta(to)) throw new GroupFailure('name_taken');
+		// The admin's own rules name the group: renaming would break them.
+		if (referencedElsewhere(policy, name)) throw new GroupFailure('in_use');
+		const members = policy.groups[key(name)];
+		delete policy.groups[key(name)];
+		policy.groups[key(to)] = members;
+		policy.acls = policy.acls.map((r) => (isMutualRule(r, name) ? { action: 'accept', src: [key(to)], dst: [`${key(to)}:*`] } : r));
+		await writePolicy(policy);
+		const store = load();
+		const former = [...(m.former ?? []).filter((n) => n !== to), name];
+		delete store[name];
+		store[to] = { ...m, former };
+		persist(store);
+		renameGroupInInvites(name, to);
+		renameGroupInRequests(name, to);
+		renameRoom(name, to);
+		return {
+			name: to,
+			kind: 'member',
+			owner: m.owner,
+			members: members.filter((x) => x.endsWith('@')).map((x) => x.slice(0, -1)),
+			former
+		};
 	});
 }
 

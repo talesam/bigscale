@@ -218,3 +218,10 @@ export function requestStatus(e: unknown): { code: string; status: number } {
 	console.error('[bigscale] group requests:', (e as Error).message);
 	return { code: 'server_error', status: 502 };
 }
+
+/** Group `from` is called `to` now: requests into it keep working. */
+export function renameGroupInRequests(from: string, to: string): void {
+	const list = load();
+	if (!list.some((r) => r.group === from)) return;
+	persist(list.map((r) => (r.group === from ? { ...r, group: to } : r)));
+}

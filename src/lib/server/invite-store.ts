@@ -250,3 +250,15 @@ export function recordUse(id: string, user: string): void {
 	persist(load());
 }
 
+
+/** Group `from` is called `to` now: invites into it keep working. */
+export function renameGroupInInvites(from: string, to: string): void {
+	const list = load();
+	let changed = false;
+	for (const inv of list) {
+		if (inv.group !== from) continue;
+		inv.group = to;
+		changed = true;
+	}
+	if (changed) persist(list);
+}
